@@ -100,6 +100,16 @@ async function shrink(url) {
   return new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error("toBlob")), "image/jpeg", 0.72));
 }
 
+// La de mis-guardados.json ya viene reducida: se guarda tal cual, sin canvas
+// (en Safari del iPhone, 2.000 canvas seguidos pueden fallar sin avisar).
+function cover(url) {
+  if (!url.startsWith("data:")) return shrink(url);
+  const bin = atob(url.slice(url.indexOf(",") + 1));
+  const u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  return Promise.resolve(new Blob([u8], { type: "image/jpeg" }));
+}
+
 // Fusiona con lo que ya hay (por code: el mismo post nunca sale dos veces).
 // onProgress(fase, hechos, total)
 export async function importItems(parsed, rules, onProgress = () => {}) {
@@ -130,7 +140,7 @@ export async function importItems(parsed, rules, onProgress = () => {}) {
   let n = 0, ok = 0;
   onProgress("portadas", 0, todo.length);
   for (let i = 0; i < todo.length; i += 6) {
-    const batch = await Promise.all(todo.slice(i, i + 6).map(p => shrink(p._thumb).then(b => [p, b], () => [p, null])));
+    const batch = await Promise.all(todo.slice(i, i + 6).map(p => cover(p._thumb).then(b => [p, b], () => [p, null])));
     tx = d.transaction(["posts", "covers"], "readwrite");
     for (const [p, b] of batch) {
       if (!b) continue;
