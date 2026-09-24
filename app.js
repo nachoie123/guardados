@@ -202,7 +202,7 @@ $("file").addEventListener("change", async e => {
     const r = await store.importItems(parsed, rules, (fase, n, t) => {
       impStatus.textContent = fase === "posts" ? `Ordenando ${fmt(t)} guardados…` : `Bajando portadas… ${fmt(n)} de ${fmt(t)}`;
     });
-    impStatus.textContent = `Listo: ${fmt(r.total)} guardados (${fmt(r.isNew)} nuevos).` +
+    impStatus.textContent = `Listo: ${fmt(r.total)} guardados (${fmt(r.isNew)} nuevos), ${fmt(r.covers)} portadas nuevas.` +
       (r.missing ? ` ${fmt(r.missing)} sin portada${old ? ": el fichero tiene más de 4 días, vuelve a pulsar el marcador" : ""}.` : "") +
       (parsed.kind === "oficial" ? " La descarga oficial no trae el texto de los posts: con el marcador buscarás mucho mejor." : "");
     await load();
