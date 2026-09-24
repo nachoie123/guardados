@@ -56,7 +56,9 @@ export function parseFile(json) {
       kind: "export", pulledAt: json.built || null,
       items: json.posts.filter(p => p?.id).map(p => ({
         code: p.id, user: p.u || "", name: p.n || "", caption: p.c || "", taken_at: p.d || null,
-        video: !!p.v, plays: p.p || 0, thumb: null, tr: p.tr || "", kw: p.kw || "",
+        video: !!p.v, plays: p.p || 0, tr: p.tr || "", kw: p.kw || "",
+        // mis-guardados.json (export.py --mio) trae la portada dentro, en base64
+        thumb: p.cov ? "data:image/jpeg;base64," + p.cov : null,
       })),
     };
   }
