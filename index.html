@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Guardados</title>
+<meta name="description" content="Busca en tus reels guardados de Instagram por lo que necesitas, no por la palabra exacta.">
+<meta name="theme-color" content="#FAFAF9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0C0A09" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Guardados">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="top">
+  <form class="search" role="search" id="form">
+    <svg class="search-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <label class="sr" for="q">Buscar en tus guardados</label>
+    <input id="q" type="search" autocomplete="off" autocapitalize="off" spellcheck="false"
+           enterkeyhint="search" placeholder="¿Qué necesitas?">
+    <button type="button" class="clear" id="clear" aria-label="Borrar búsqueda" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+    </button>
+  </form>
+  <button class="mic" id="mic" type="button" aria-label="Dictar búsqueda">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+  </button>
+  <nav class="chips" id="chips" aria-label="Categorías"></nav>
+</header>
+
+<main>
+  <section class="intro" id="intro" hidden>
+    <p><b>Esto es una muestra</b>: <span id="intro-n">34</span> reels guardados por Nacho. Busca como hablarías, «algo para cenar rápido», «prácticas de finanzas».</p>
+    <button type="button" class="btn" data-open-import>Busca en los tuyos</button>
+  </section>
+  <p class="status" id="status" aria-live="polite">Cargando tus guardados…</p>
+  <ul class="grid" id="grid"></ul>
+  <div id="more" aria-hidden="true"></div>
+  <footer class="foot" id="foot" hidden>
+    <p id="built"></p>
+    <button type="button" class="link" data-open-import id="f-import">Importar mis guardados</button>
+    <span id="mine-actions" hidden>
+      <button type="button" class="link" id="backup">Copia de seguridad</button>
+      <button type="button" class="link" id="wipe">Borrar mis datos</button>
+    </span>
+    <p class="privacy">Tus guardados se quedan en este dispositivo. No hay servidor ni cuenta.</p>
+  </footer>
+</main>
+
+<dialog class="sheet" id="sheet" aria-labelledby="d-title">
+  <div class="sheet-body">
+    <button class="close" id="close" type="button" aria-label="Cerrar">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+    </button>
+    <div class="d-cover" id="d-cover"></div>
+    <div class="d-info">
+      <h2 id="d-title"></h2>
+      <p class="d-meta" id="d-meta"></p>
+      <div class="d-cats" id="d-cats"></div>
+      <a class="btn" id="d-open" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" class="fill"/></svg>
+        Abrir en Instagram
+      </a>
+      <p class="d-cap" id="d-cap"></p>
+    </div>
+  </div>
+</dialog>
+
+<dialog class="sheet" id="imp" aria-labelledby="imp-title">
+  <div class="sheet-body imp">
+    <button class="close" id="imp-close" type="button" aria-label="Cerrar">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+    </button>
+    <h2 id="imp-title">Trae tus guardados</h2>
+    <p class="muted">Un marcador lee tus guardados en instagram.com y te baja un fichero. Lo importas aquí y ya. Todo pasa en tu móvil: nada se sube a ningún sitio.</p>
+
+    <ol class="steps">
+      <li>
+        <h3>Guarda el marcador</h3>
+        <div class="only-touch">
+          <button type="button" class="btn" id="copy-bm">Copiar el marcador</button>
+          <p class="muted">En Safari: <b>Compartir → Añadir marcador</b> (a esta página). Luego <b>Marcadores → Editar</b>, abre el que acabas de crear, llámalo <b>Guardados</b>, borra la dirección y pega.</p>
+        </div>
+        <div class="only-mouse">
+          <a class="btn bm" id="drag-bm" href="#">Guardados ⤓</a>
+          <p class="muted">Arrástralo a la barra de marcadores.</p>
+        </div>
+      </li>
+      <li>
+        <h3>Púlsalo en Instagram</h3>
+        <p class="muted">Abre <b>instagram.com</b> con tu cuenta (en el navegador, no la app). En el iPhone, toca la barra de direcciones, escribe <b>Guardados</b> y toca el marcador. Espera a que diga «Listo»: baja <b>guardados-fecha.json</b>.</p>
+        <p class="muted">Va despacio a propósito (unos 2.000 guardados, un par de minutos) para que Instagram no lo tome por un robot. Aun así, es un atajo que Instagram no ofrece oficialmente: úsalo de vez en cuando, no a diario. Desde la segunda vez baja solo los nuevos.</p>
+      </li>
+      <li>
+        <h3>Impórtalo aquí</h3>
+        <p class="muted">Hazlo antes de 4 días: los enlaces de las portadas caducan.</p>
+        <label class="btn file">Elegir el fichero
+          <input type="file" id="file" accept=".json,application/json">
+        </label>
+      </li>
+    </ol>
+    <p class="imp-status" id="imp-status" aria-live="polite"></p>
+    <details class="muted">
+      <summary>¿Prefieres la descarga oficial de Instagram?</summary>
+      <p>En Instagram: <b>Centro de cuentas → Tu información y permisos → Descargar tu información</b>, elige solo «Guardado» y formato JSON. Tarda de minutos a días. Descomprime el zip e importa <b>saved_posts.json</b>. Solo trae la cuenta y el enlace de cada post (sin texto ni portada), así que el buscador encuentra mucho menos.</p>
+    </details>
+  </div>
+</dialog>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
