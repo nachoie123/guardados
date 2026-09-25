@@ -13,6 +13,18 @@ const CATS = {
   diseño: ["Diseño", "#BE185D", "#2E1065"],
   negocios: ["Negocios", "#A16207", "#292524"],
   humor: ["Humor", "#9333EA", "#3B0764"],
+  anime: ["Anime", "#E11D48", "#4C0519"],
+  videojuegos: ["Videojuegos", "#4338CA", "#0B0A2E"],
+  musica: ["Música", "#C026D3", "#4A044E"],
+  deportes: ["Deportes", "#15803D", "#052E16"],
+  moda: ["Moda y belleza", "#DB2777", "#1F0512"],
+  animales: ["Animales", "#92400E", "#1C0F05"],
+  planes: ["Planes y restaurantes", "#EA580C", "#3B1106"],
+  ciencia: ["Ciencia y curiosidades", "#0891B2", "#082F49"],
+  estudios: ["Estudios", "#2563EB", "#172554"],
+  coches: ["Coches y motor", "#475569", "#0F172A"],
+  hogar: ["Hogar y DIY", "#65A30D", "#1A2E05"],
+  motivacion: ["Motivación", "#CA8A04", "#2A1B02"],
   otros: ["Otros", "#57534E", "#1C1917"],
 };
 const label = c => (CATS[c] || [c])[0];

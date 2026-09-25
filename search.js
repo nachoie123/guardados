@@ -81,6 +81,18 @@ const CAT_ALIAS = {
   diseno: "diseno design web",
   negocios: "negocio negocios emprender empresa clientes",
   humor: "gracioso meme memes risa humor",
+  anime: "anime manga otaku",
+  videojuegos: "videojuego videojuegos juego juegos gaming games consola",
+  musica: "musica cancion canciones song songs rap dj concierto",
+  deportes: "deporte deportes futbol baloncesto tenis sports",
+  moda: "moda ropa outfit outfits belleza maquillaje zapatillas",
+  animales: "animal animales perro perros gato gatos mascota mascotas",
+  planes: "plan planes restaurante restaurantes bar bares sitio sitios madrid",
+  ciencia: "ciencia curiosidad curiosidades historia experimento",
+  estudios: "estudiar estudios universidad examen examenes uni",
+  coches: "coche coches motor moto motos",
+  hogar: "hogar casa decoracion diy piso muebles",
+  motivacion: "motivacion mentalidad mindset habitos",
 };
 
 export const norm = s => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();

@@ -20,8 +20,10 @@ export function makeRules(data) {
   try { RUIDO = new RegExp(data.ruido.replace(/\\"/g, '"'), "iu"); }
   catch { RUIDO = new RegExp(data.ruido, "i"); }
 
+  // signos -> espacio antes de contar (rules.SEP_RE): "#anime" casa con " anime"
+  const SEP = new RegExp((data.sep || "[#]").replace(/\\"/g, '"'), "gu");
   const scores = (...texts) => {
-    const blob = ` ${texts.map(t => t || "").join(" ").toLowerCase()} `;
+    const blob = ` ${texts.map(t => t || "").join(" ").toLowerCase().replace(SEP, " ")} `;
     return Object.entries(KW).map(([c, kws]) => [c, kws.reduce((n, k) => n + count(blob, k), 0)]);
   };
 
