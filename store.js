@@ -57,6 +57,7 @@ export function parseFile(json) {
       items: json.posts.filter(p => p?.id).map(p => ({
         code: p.id, user: p.u || "", name: p.n || "", caption: p.c || "", taken_at: p.d || null,
         video: !!p.v, plays: p.p || 0, tr: p.tr || "", kw: p.kw || "",
+        src: p.src || "instagram", url: p.url || null,
         // mis-guardados.json (export.py --mio) trae la portada dentro, en base64
         thumb: p.cov ? "data:image/jpeg;base64," + p.cov : null,
       })),
@@ -66,11 +67,30 @@ export function parseFile(json) {
     return {
       kind: json.app === "guardados" ? "marcador" : "pull",
       pulledAt: json.pulled_at || null,
+      src: json.src || "instagram",
       items: json.items.filter(i => i?.code).map(i => ({
         code: i.code, user: i.user || "", name: i.name || "", caption: i.caption || "",
         taken_at: i.taken_at || null, video: i.type === 2, plays: i.plays || 0, thumb: i.thumb || null,
+        // TikTok (bookmarklet-tiktok.js): enlace propio y subtitulos automaticos en tr
+        src: i.src || "instagram", url: i.url || null, tr: i.tr || "",
       })),
     };
+  }
+  // descarga oficial de TikTok (user_data_tiktok.json): la lista de favoritos
+  // cambia de sitio segun la version, asi que se busca por nombre
+  const find = (o, d = 0) => o && typeof o === "object" && d < 5 &&
+    (Array.isArray(o.FavoriteVideoList) ? o.FavoriteVideoList : Object.values(o).reduce((a, v) => a || find(v, d + 1), null));
+  const ttOfficial = !Array.isArray(json) && find(json);
+  if (ttOfficial) {
+    const items = [];
+    for (const e of ttOfficial) {
+      const link = e?.Link || e?.link || "";
+      const m = link.match(/\/(?:video|photo|v)\/(\d{8,})/);
+      const t = Date.parse((e.Date || e.date || "").replace(" ", "T") + "Z");
+      if (m) items.push({ code: "tt_" + m[1], src: "tiktok", url: link, user: "", name: "", caption: "",
+        taken_at: isNaN(t) ? null : t / 1000, video: true, plays: 0, thumb: null });
+    }
+    return { kind: "oficial", src: "tiktok", pulledAt: null, items };
   }
   const official = json?.saved_saved_media || (Array.isArray(json) ? json : null);
   if (official) {
@@ -125,7 +145,8 @@ export async function importItems(parsed, rules, onProgress = () => {}) {
       id: i.code, t: display,
       u: i.user || prev?.u || "", n: i.name || prev?.n || "", c: caption, tr, kw,
       cat: cats, d: i.taken_at || prev?.d || null, v: i.video, p: i.plays || prev?.p || 0,
-      url: `https://www.instagram.com/p/${i.code}/`,
+      src: i.src || prev?.src || "instagram",
+      url: i.url || prev?.url || `https://www.instagram.com/p/${i.code}/`,
       img: !!prev?.img, _thumb: i.thumb,
     };
   });
@@ -161,6 +182,7 @@ export async function importItems(parsed, rules, onProgress = () => {}) {
 export async function exportBackup() {
   const posts = await loadPosts();
   return new Blob([JSON.stringify({ app: "guardados", v: 1, backup: true, pulled_at: Date.now(),
-    items: posts.map(p => ({ code: p.id, user: p.u, name: p.n, caption: p.c, taken_at: p.d, type: p.v ? 2 : 1, plays: p.p })) })],
+    items: posts.map(p => ({ code: p.id, user: p.u, name: p.n, caption: p.c, taken_at: p.d, type: p.v ? 2 : 1, plays: p.p,
+      src: p.src, url: p.url, tr: p.src === "tiktok" ? p.tr : undefined })) })],
     { type: "application/json" });
 }

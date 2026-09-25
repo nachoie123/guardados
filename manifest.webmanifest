@@ -1,7 +1,7 @@
 {
   "name": "Guardados",
   "short_name": "Guardados",
-  "description": "Busca en tus reels guardados de Instagram por lo que necesitas.",
+  "description": "Busca en tus guardados de Instagram y TikTok por lo que necesitas.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

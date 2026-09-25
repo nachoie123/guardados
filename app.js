@@ -37,7 +37,7 @@ function card(r) {
   const p = r.p;
   const li = document.createElement("li");
   li.innerHTML = `<button class="card" type="button" data-id="${p.id}">
-    <div class="cover">${coverHTML(p)}${r.audio ? `<span class="badge">${AUDIO_ICO}Lo dice en el vídeo</span>` : ""}</div>
+    <div class="cover">${coverHTML(p)}${p.src === "tiktok" ? '<span class="src">TikTok</span>' : ""}${r.audio ? `<span class="badge">${AUDIO_ICO}Lo dice en el vídeo</span>` : ""}</div>
     <h3>${esc(p.t)}</h3>
     <p class="who">@${esc(p.u)}</p></button>`;
   return li;
@@ -122,6 +122,8 @@ function openPost(id, push = true) {
   $("d-meta").textContent = [`@${p.u}`, d].filter(Boolean).join(" · ");
   $("d-cats").innerHTML = p.cat.map(c => `<button class="chip" type="button" data-cat="${c}">${esc(label(c))}</button>`).join("");
   $("d-open").href = p.url;
+  $("d-open").classList.toggle("tt", p.src === "tiktok");
+  $("d-open-txt").textContent = p.src === "tiktok" ? "Abrir en TikTok" : "Abrir en Instagram";
   $("d-cap").textContent = p.c;
   if (push) history.pushState({ post: id }, "", `#${id}`);
   if (!sheet.open) sheet.showModal();
@@ -176,18 +178,20 @@ document.addEventListener("click", e => {
 $("imp-close").addEventListener("click", () => imp.close());
 imp.addEventListener("click", e => { if (e.target === imp) imp.close(); });
 
-// el marcador es bookmarklet.js sin sus lineas de comentario, en una sola URL
-let bookmarklet = "";
-fetch("bookmarklet.js").then(r => r.text()).then(src => {
-  const code = src.split("\n").filter(l => !l.trim().startsWith("//")).join("\n");
-  bookmarklet = "javascript:" + encodeURIComponent(code);
-  $("drag-bm").href = bookmarklet;
-});
-$("drag-bm").addEventListener("click", e => { e.preventDefault(); impStatus.textContent = "Arrástralo a la barra de marcadores; se usa en instagram.com."; });
-$("copy-bm").addEventListener("click", async () => {
-  try { await navigator.clipboard.writeText(bookmarklet); impStatus.textContent = "Copiado. Ahora pégalo como dirección del marcador."; }
-  catch { prompt("Copia esto:", bookmarklet); }
-});
+// cada marcador es su .js sin las lineas de comentario, en una sola URL
+const bookmarklets = {};
+for (const [id, file, site] of [["bm", "bookmarklet.js", "instagram.com"], ["bm-tt", "bookmarklet-tiktok.js", "tiktok.com"]]) {
+  fetch(file).then(r => r.text()).then(src => {
+    const code = src.split("\n").filter(l => !l.trim().startsWith("//")).join("\n");
+    bookmarklets[id] = "javascript:" + encodeURIComponent(code);
+    $("drag-" + id).href = bookmarklets[id];
+  });
+  $("drag-" + id).addEventListener("click", e => { e.preventDefault(); impStatus.textContent = `Arrástralo a la barra de marcadores; se usa en ${site}.`; });
+  $("copy-" + id).addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(bookmarklets[id]); impStatus.textContent = "Copiado. Ahora pégalo como dirección del marcador."; }
+    catch { prompt("Copia esto:", bookmarklets[id]); }
+  });
+}
 
 const fmt = n => n.toLocaleString("es-ES");
 $("file").addEventListener("change", async e => {
@@ -197,14 +201,15 @@ $("file").addEventListener("change", async e => {
   let parsed;
   try { parsed = store.parseFile(JSON.parse(await f.text())); } catch { parsed = null; }
   if (!parsed?.items.length) { impStatus.textContent = "Ese fichero no parece de guardados. Usa el que baja el marcador (guardados-fecha.json)."; return; }
-  const old = parsed.pulledAt && Date.now() - parsed.pulledAt > 4 * 864e5;
+  const tt = parsed.src === "tiktok", days = tt ? 2 : 4;
+  const old = parsed.pulledAt && Date.now() - parsed.pulledAt > days * 864e5;
   try {
     const r = await store.importItems(parsed, rules, (fase, n, t) => {
       impStatus.textContent = fase === "posts" ? `Ordenando ${fmt(t)} guardados…` : `Bajando portadas… ${fmt(n)} de ${fmt(t)}`;
     });
     impStatus.textContent = `Listo: ${fmt(r.total)} guardados (${fmt(r.isNew)} nuevos), ${fmt(r.covers)} portadas nuevas.` +
-      (r.missing ? ` ${fmt(r.missing)} sin portada${old ? ": el fichero tiene más de 4 días, vuelve a pulsar el marcador" : ""}.` : "") +
-      (parsed.kind === "oficial" ? " La descarga oficial no trae el texto de los posts: con el marcador buscarás mucho mejor." : "");
+      (r.missing ? ` ${fmt(r.missing)} sin portada${old ? `: el fichero tiene más de ${days} días, vuelve a pulsar el marcador` : ""}.` : "") +
+      (parsed.kind === "oficial" ? ` La descarga oficial no trae el texto de los ${tt ? "vídeos" : "posts"}: con el marcador buscarás mucho mejor.` : "");
     await load();
   } catch (err) {
     impStatus.textContent = "No he podido guardarlos en este navegador" + (err?.name === "QuotaExceededError" ? ": no queda espacio." : ".");
