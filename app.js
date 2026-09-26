@@ -299,13 +299,45 @@ async function load() {
   run();
 }
 
+// --- sincronizar con el Mac: al abrir la app, si esta vinculada ---
+let syncing = false;
+async function sync() {
+  if (syncing || !store.syncKey() || !navigator.onLine) return;
+  syncing = true;
+  try {
+    const r = await store.syncNow(rules, (fase, n, t) => {
+      status.textContent = fase === "datos" ? "Trayendo lo nuevo del Mac…" : `Trayendo portadas del Mac… ${n + 1} de ${t}`;
+    });
+    if (r) {
+      await load();
+      status.textContent = `Del Mac: ${fmt(r.posts)} guardados nuevos, ${fmt(r.covers)} portadas. ` + status.textContent;
+    } else if (/^Trayendo/.test(status.textContent)) run();
+  } catch {
+    run();  // sin red o sin paquetes: se queda lo que habia, sin ruido
+  } finally { syncing = false; }
+}
+$("link-mac").addEventListener("click", () => {
+  const s = prompt("Pega el enlace del QR de tu Mac (o solo la clave):");
+  if (s == null) return;
+  if (!store.setSyncKey(s)) { impStatus.textContent = "Eso no parece el enlace del QR. Ábrelo desde la cámara o cópialo entero."; return; }
+  impStatus.textContent = "Vinculado. Trayendo tus guardados del Mac…";
+  sync().then(() => { impStatus.textContent = "Vinculado con el Mac: cada vez que abras la app, se pone al día sola."; });
+});
+document.addEventListener("visibilitychange", () => { if (!document.hidden) sync(); });
+
 async function main() {
   rules = makeRules(await (await fetch("rules-data.json")).json());
   const params = new URLSearchParams(location.search);
   q.value = params.get("q") || "";
   cat = params.get("cat");
+  // enlace del QR (#k=clave): se guarda y se quita de la barra de direcciones
+  if (location.hash.startsWith("#k=")) {
+    store.setSyncKey(location.hash);
+    history.replaceState(history.state, "", location.pathname + location.search);
+  }
   await load();
   if (location.hash.length > 1) openPost(location.hash.slice(1), false);
+  sync();
 }
 main().catch(() => { status.textContent = "No he podido cargar la app. Ábrela una vez con conexión."; });
 

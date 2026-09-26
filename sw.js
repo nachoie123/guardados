@@ -1,7 +1,7 @@
 // Sin conexion: la app y la muestra se guardan al abrirla; las portadas de la
 // muestra, segun se ven. Los guardados de cada uno no pasan por aqui: viven en
 // IndexedDB (store.js). Todo va "red primero": con conexion, la ultima version.
-const SHELL = "shell-v6";
+const SHELL = "shell-v7";
 const FILES = ["./", "index.html", "app.css", "app.js", "search.js", "rules.js", "store.js",
   "rules-data.json", "bookmarklet.js", "bookmarklet-tiktok.js", "demo/posts.json", "manifest.webmanifest",
   "icons/icon-192.png", "icons/icon-512.png", "icons/icon-180.png"];
@@ -18,6 +18,7 @@ self.addEventListener("activate", e => {
 self.addEventListener("fetch", e => {
   const url = new URL(e.request.url);
   if (e.request.method !== "GET" || url.origin !== location.origin) return;
+  if (url.pathname.includes("/sync/")) return;  // paquetes del Mac: los guarda store.js, no esta cache
 
   if (url.pathname.includes("/covers/")) {
     e.respondWith(caches.open("covers-v1").then(async c => {

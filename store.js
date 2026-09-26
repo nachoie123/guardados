@@ -249,3 +249,69 @@ export async function exportBackup() {
       src: p.src, url: p.url, tr: p.src === "tiktok" ? p.tr : undefined })) })],
     { type: "application/json" });
 }
+
+// --- sincronizacion con el Mac (tools/sync-pack.py) ---
+// El Mac publica en sync/ paquetes cifrados (AES-GCM) con lo nuevo; la clave
+// llega una vez por el QR (#k=...) y se queda en este dispositivo. Aqui se baja
+// el indice, los datos si han cambiado y solo las portadas que falten.
+const SYNC_KEY = "guardados.sync", SYNC_POSTS = "guardados.sync.posts";
+const ls = {
+  get: k => { try { return localStorage.getItem(k); } catch { return null; } },
+  set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} },
+};
+export const syncKey = () => ls.get(SYNC_KEY);
+// acepta la clave a secas o el enlace entero del QR
+export function setSyncKey(s) {
+  const k = (s || "").trim().replace(/^.*#k=/, "");
+  if (!/^[A-Za-z0-9_-]{43}$/.test(k)) return false;
+  ls.set(SYNC_KEY, k); ls.set(SYNC_POSTS, null);
+  return true;
+}
+
+async function unseal(k, buf) {
+  const raw = Uint8Array.from(atob(k.replace(/-/g, "+").replace(/_/g, "/") + "="), c => c.charCodeAt(0));
+  const key = await crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["decrypt"]);
+  return new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv: buf.slice(0, 12) }, key, buf.slice(12)));
+}
+const getBin = async f => {
+  const r = await fetch("sync/" + f, { cache: "no-store" });
+  if (!r.ok) throw new Error("sync " + r.status);
+  return new Uint8Array(await r.arrayBuffer());
+};
+
+// -> null si no hay nada nuevo; si no, { posts, covers } con lo que ha entrado
+export async function syncNow(rules, onProgress = () => {}) {
+  const k = syncKey();
+  if (!k) return null;
+  const ix = JSON.parse(new TextDecoder().decode(await unseal(k, await getBin("index.bin"))));
+  let posts = 0, covers = 0;
+  if (ix.posts && ix.posts !== ls.get(SYNC_POSTS)) {
+    onProgress("datos", 0, 1);
+    const gz = await unseal(k, await getBin(ix.posts));
+    const text = await new Response(new Blob([gz]).stream().pipeThrough(new DecompressionStream("gzip"))).text();
+    const r = await importItems(parseFile(JSON.parse(text)), rules);
+    posts = r.isNew;
+    ls.set(SYNC_POSTS, ix.posts);
+  }
+  const rows = new Map((await loadPosts()).filter(p => !p.img).map(p => [p.id, p]));
+  const packs = ix.covers.filter(p => p.ids.some(id => rows.has(id)));
+  const d = await db();
+  for (const [n, p] of packs.entries()) {
+    onProgress("portadas", n, packs.length);
+    const b = await unseal(k, await getBin(p.f));
+    const len = new DataView(b.buffer, b.byteOffset).getUint32(0);
+    let off = 4 + len;
+    const tx = d.transaction(["posts", "covers"], "readwrite");
+    for (const [id, size] of JSON.parse(new TextDecoder().decode(b.subarray(4, 4 + len)))) {
+      const row = rows.get(id);
+      if (row) {
+        tx.objectStore("covers").put(new Blob([b.subarray(off, off + size)], { type: "image/jpeg" }), id);
+        tx.objectStore("posts").put({ ...row, img: true });
+        covers++;
+      }
+      off += size;
+    }
+    await done(tx);
+  }
+  return posts || covers ? { posts, covers } : null;
+}
