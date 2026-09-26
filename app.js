@@ -26,7 +26,12 @@ const CATS = {
   hogar: ["Hogar y DIY", "#65A30D", "#1A2E05"],
   motivacion: ["Motivación", "#CA8A04", "#2A1B02"],
   otros: ["Otros", "#57534E", "#1C1917"],
+  // carpetas por red social (search.js: cat "src:...")
+  "src:instagram": ["Instagram", "#C13584", "#405DE6"],
+  "src:tiktok": ["TikTok", "#0F0F0F", "#0E7490"],
 };
+const SRC = ["src:instagram", "src:tiktok"];
+const srcOf = p => "src:" + (p.src || "instagram");
 const label = c => (CATS[c] || [c])[0];
 const PAGE = 40;
 
@@ -101,7 +106,11 @@ function renderChips(hint = []) {
   // las que sugiere la pregunta van delante, para que se vean sin deslizar
   const sug = c => hint.includes(norm(c)) ? 0 : 1;
   const order = Object.keys(counts).sort((a, b) => sug(a) - sug(b) || (a === "otros") - (b === "otros") || counts[b] - counts[a]);
-  chips.innerHTML = [`<button class="chip" type="button" data-cat="" aria-pressed="${!cat}">Todo <span class="n">${ix.posts.length}</span></button>`]
+  const nsrc = {};
+  for (const p of ix.posts) nsrc[srcOf(p)] = (nsrc[srcOf(p)] || 0) + 1;
+  const srcChips = Object.keys(nsrc).length > 1 ? SRC.filter(c => nsrc[c]).map(c =>
+    `<button class="chip" type="button" data-cat="${c}" aria-pressed="${cat === c}">${esc(label(c))} <span class="n">${nsrc[c]}</span></button>`) : [];
+  chips.innerHTML = [`<button class="chip" type="button" data-cat="" aria-pressed="${!cat}">Todo <span class="n">${ix.posts.length}</span></button>`, ...srcChips]
     .concat(order.map(c => `<button class="chip${hint.includes(norm(c)) ? " hint" : ""}" type="button" data-cat="${c}" aria-pressed="${cat === c}">${esc(label(c))} <span class="n">${counts[c]}</span></button>`))
     .join("");
 }
@@ -109,13 +118,16 @@ function renderChips(hint = []) {
 function run() {
   const text = q.value.trim();
   $("clear").hidden = !text;
-  const r = search(ix, text, { cat, limit: 400 });
+  const r = search(ix, text, { cat, limit: Infinity });  // todos: la rejilla carga de 40 en 40 al bajar
   results = r.results; total = r.total; shown = 0;
   grid.innerHTML = "";
   if (!results.length) {
     grid.innerHTML = `<li class="empty">Nada por aquí. Prueba a decirlo de otra forma${cat ? " o quita el filtro de categoría" : ""}.</li>`;
   } else renderMore();
-  const where = cat ? ` en ${label(cat)}` : "";
+  const where = "";
+  $("folder").hidden = !cat;
+  $("folder-t").textContent = cat ? label(cat) : "";
+  q.placeholder = cat ? "Buscar aquí…" : "¿Qué necesitas?";
   status.textContent = text
     ? `${total} ${total === 1 ? "resultado" : "resultados"}${where}, los más útiles primero`
     : `${total} guardados${where}, los más recientes primero`;
@@ -176,6 +188,45 @@ chips.addEventListener("click", e => {
   run();
   scrollTo({ top: 0 });
 });
+
+// --- indice de carpetas (boton de arriba a la izquierda) y ajustes ---
+const menu = $("menu"), aj = $("ajustes");
+function folders() {
+  const groups = new Map([["", ix.posts]]);
+  for (const c of SRC) groups.set(c, ix.posts.filter(p => srcOf(p) === c));
+  const counts = {};
+  for (const p of ix.posts) for (const c of p.cat) (counts[c] ||= []).push(p);
+  Object.keys(counts).sort((a, b) => (a === "otros") - (b === "otros") || counts[b].length - counts[a].length)
+    .forEach(c => groups.set(c, counts[c]));
+  const used = new Set();  // cada carpeta con su propia portada: la mas reciente que no se haya usado ya
+  const recent = ps => { const p = ps.find(p => p.img && !used.has(p.id)) || ps[0]; used.add(p.id); return p; };
+  $("folders").innerHTML = [...groups].filter(([, ps]) => ps.length).map(([c, ps]) => {
+    const p = recent(ps);
+    const ph = CATS[c] ? { ...p, img: false, cat: [c] } : p;  // sin portada: el color de la carpeta
+    return `<li><button type="button" data-cat="${c}" aria-current="${(cat || "") === c}">
+      <div class="cover">${coverHTML(p?.img ? p : ph)}<span class="f-name">${esc(c ? label(c) : "Todo")}<small>${fmt(ps.length)}</small></span></div></button></li>`;
+  }).join("");
+  hydrate($("folders"));
+}
+$("menu-btn").addEventListener("click", () => { folders(); $("settings-hint").textContent = store.syncKey() ? "Vinculado con el Mac" : ""; menu.showModal(); });
+$("menu-close").addEventListener("click", () => menu.close());
+$("folders").addEventListener("click", e => {
+  const b = e.target.closest("button[data-cat]");
+  if (!b) return;
+  cat = b.dataset.cat || null;
+  q.value = "";
+  menu.close(); run(); scrollTo({ top: 0 });
+});
+$("folder-back").addEventListener("click", () => { cat = null; run(); scrollTo({ top: 0 }); });
+function segCols() {
+  const n = cols();
+  for (const b of $("seg-cols").children) b.setAttribute("aria-pressed", +b.dataset.cols === n);
+}
+$("open-settings").addEventListener("click", () => { menu.close(); segCols(); aj.showModal(); });
+$("aj-close").addEventListener("click", () => aj.close());
+$("seg-cols").addEventListener("click", e => { const b = e.target.closest("[data-cols]"); if (b) { setCols(+b.dataset.cols); segCols(); } });
+// desde ajustes se abren importar o vincular: que no se apilen dos hojas
+document.addEventListener("click", e => { if (e.target.closest("[data-open-import],[data-open-mac]") && aj.open) aj.close(); }, true);
 
 // cargar mas al acercarse al final
 new IntersectionObserver(es => { if (es[0].isIntersecting && shown < results.length) renderMore(); },

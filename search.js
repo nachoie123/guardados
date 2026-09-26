@@ -179,7 +179,9 @@ export function search(ix, q, { cat = null, limit = 60 } = {}) {
   for (const c of cs) { const k = ix.catOf.get(c.word) || ix.catOf.get(stem(c.word)); if (k) wantCats.add(k); }
   for (const [ph, k] of ix.catPhrases) if (nq.includes(" " + ph + " ")) wantCats.add(k);
 
-  const inCat = i => !cat || ix.posts[i].cat.map(norm).includes(norm(cat));
+  // "src:instagram" / "src:tiktok": carpetas por red social, no por tema
+  const inCat = i => !cat || (cat.startsWith("src:") ? (ix.posts[i].src || "instagram") === cat.slice(4)
+    : ix.posts[i].cat.map(norm).includes(norm(cat)));
   if (!cs.length) {
     const all = ix.posts.map((p, i) => ({ p, i, score: 0 })).filter(r => inCat(r.i));
     return { results: all.slice(0, limit), total: all.length, cats: [...wantCats] };

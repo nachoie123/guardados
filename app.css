@@ -47,7 +47,7 @@ button { font: inherit; color: inherit; }
 /* --- cabecera fija: buscador + micro + categorias --- */
 .top {
   position: sticky; top: 0; z-index: 5;
-  display: grid; grid-template-columns: 1fr auto; gap: 10px;
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px;
   padding: calc(var(--safe-t) + 12px) 16px 10px;
   background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: saturate(1.4) blur(16px);
@@ -235,7 +235,6 @@ main { padding: 8px 16px calc(var(--safe-b) + 24px); max-width: 1100px; margin: 
 
 .scan { margin-top: 12px; }
 .scan video { width: 100%; max-width: 360px; aspect-ratio: 1; object-fit: cover; border-radius: var(--radius); background: #000; display: block; }
-.mac-btn { max-width: 320px; margin: 0 auto 4px; display: block; }
 .mac #mac-start .link, .intro .link { display: block; margin: 4px auto 0; }
 .mac-ok { text-align: center; padding: 12px 0 4px; }
 .tick { width: 88px; height: 88px; margin: 8px auto 12px; border-radius: 50%; background: #16A34A; display: grid; place-items: center;
@@ -250,3 +249,42 @@ main { padding: 8px 16px calc(var(--safe-b) + 24px); max-width: 1100px; margin: 
 .mac-ok.err .tick { background: var(--accent); }
 @media (prefers-reduced-motion: reduce) { .tick, .tick svg { animation: none; stroke-dashoffset: 0; } }
 [hidden] { display: none !important; }
+
+/* --- menu: indice de carpetas + ajustes --- */
+.menu {
+  width: 48px; height: 48px; border-radius: 50%; border: 0; display: grid; place-items: center;
+  background: var(--surface-2); color: var(--text);
+}
+.menu svg, .row-btn svg, .folder-back svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.sheet.full { height: 100dvh; max-height: 100dvh; margin: 0; width: 100%; max-width: none; border-radius: 0; }
+.sheet.full .sheet-body { padding-top: calc(var(--safe-t) + 16px); }
+.row-btn {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 0 16px; margin: 0 0 8px;
+  border: 0; border-radius: var(--radius); background: var(--surface-2); color: var(--text); font: inherit; font-weight: 600; text-align: left;
+}
+.row-btn small { margin-left: auto; color: var(--muted); font-weight: 400; font-size: 13px; }
+.row-btn.danger { color: #DC2626; }
+#open-settings { margin-right: 56px; width: calc(100% - 56px); }
+#menu-title { margin: 20px 0 12px; font-size: 22px; }
+.folders { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (min-width: 600px) { .folders { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.folders button { display: block; width: 100%; padding: 0; border: 0; background: none; text-align: left; color: var(--text); font: inherit; }
+.folders .cover { aspect-ratio: 4 / 5; }
+.folders .cover::after { content: ""; position: absolute; inset: 0; background: linear-gradient(transparent 45%, rgb(0 0 0 / .72)); }
+.folders .f-name { position: absolute; left: 10px; right: 10px; bottom: 8px; z-index: 1; color: #fff; font-weight: 700; font-size: 15px; line-height: 1.2; }
+.folders .f-name small { display: block; font-weight: 500; font-size: 12px; opacity: .85; }
+.folders .ph { font-size: 0; }
+.folders [aria-current="true"] .cover { box-shadow: 0 0 0 3px var(--accent); }
+
+/* cabecera de la carpeta abierta */
+.folder { display: flex; align-items: center; gap: 6px; margin: 4px 0 2px; }
+.folder h1 { margin: 0; font-size: 24px; line-height: 1.2; }
+.folder-back { width: 44px; height: 44px; margin-left: -10px; border: 0; background: none; color: var(--text); display: grid; place-items: center; }
+
+/* ajustes */
+.aj { margin: 18px 0 0; }
+.aj h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.aj .muted { margin: 6px 0 0; font-size: 13px; }
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; border-radius: 12px; background: var(--surface-2); }
+.seg button { min-height: 40px; border: 0; border-radius: 9px; background: none; color: var(--text); font: inherit; font-weight: 600; }
+.seg button[aria-pressed="true"] { background: var(--surface); box-shadow: 0 1px 3px rgb(0 0 0 / .15); }
