@@ -25,6 +25,7 @@ const CATS = {
   coches: ["Coches y motor", "#475569", "#0F172A"],
   hogar: ["Hogar y DIY", "#65A30D", "#1A2E05"],
   motivacion: ["Motivación", "#CA8A04", "#2A1B02"],
+  ideas: ["Ideas", "#F59E0B", "#7C2D12"],
   otros: ["Otros", "#57534E", "#1C1917"],
   // carpetas por red social (search.js: cat "src:...")
   "src:instagram": ["Instagram", "#C13584", "#405DE6"],
@@ -194,9 +195,10 @@ const menu = $("menu"), aj = $("ajustes");
 function folders() {
   const groups = new Map([["", ix.posts]]);
   for (const c of SRC) groups.set(c, ix.posts.filter(p => srcOf(p) === c));
+  groups.set("ideas", ix.posts.filter(p => p.cat.includes("ideas")));
   const counts = {};
   for (const p of ix.posts) for (const c of p.cat) (counts[c] ||= []).push(p);
-  Object.keys(counts).sort((a, b) => (a === "otros") - (b === "otros") || counts[b].length - counts[a].length)
+  Object.keys(counts).filter(c => c !== "ideas").sort((a, b) => (a === "otros") - (b === "otros") || counts[b].length - counts[a].length)
     .forEach(c => groups.set(c, counts[c]));
   const used = new Set();  // cada carpeta con su propia portada: la mas reciente que no se haya usado ya
   const recent = ps => { const p = ps.find(p => p.img && !used.has(p.id)) || ps[0]; used.add(p.id); return p; };

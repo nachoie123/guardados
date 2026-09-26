@@ -98,6 +98,7 @@ export function parseFile(json) {
         code: p.id, user: p.u || "", name: p.n || "", caption: p.c || "", taken_at: p.d || null,
         video: !!p.v, plays: p.p || 0, tr: p.tr || "", kw: p.kw || "",
         src: p.src || "instagram", url: p.url || null,
+        ideas: (p.cat || []).includes("ideas"),  // carpeta Ideas: la decide el Mac (ideas.py), no rules.js
         // mis-guardados.json (export.py --mio) trae la portada dentro, en base64
         thumb: p.cov || null,
       })),
@@ -232,6 +233,7 @@ export async function importItems(parsed, rules, onProgress = () => {}, thumbs =
     const caption = i.caption || prev?.c || "";
     const tr = i.tr || prev?.tr || "", kw = i.kw || prev?.kw || "";
     const { display, cats } = rules.label(caption, tr, i.user || prev?.u || "");
+    if (i.ideas ?? prev?.cat?.includes("ideas")) cats.push("ideas");
     return {
       id: i.code, t: display,
       u: i.user || prev?.u || "", n: i.name || prev?.n || "", c: caption, tr, kw,
