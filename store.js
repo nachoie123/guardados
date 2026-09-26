@@ -99,7 +99,7 @@ export function parseFile(json) {
         video: !!p.v, plays: p.p || 0, tr: p.tr || "", kw: p.kw || "",
         src: p.src || "instagram", url: p.url || null,
         ideas: (p.cat || []).includes("ideas"),
-        dur: p.dur || 0, que: p.que || "",  // carpeta Ideas: la decide el Mac (ideas.py), no rules.js
+        dur: p.dur || 0, que: p.que || "", dup: p.dup || [],  // carpeta Ideas: la decide el Mac (ideas.py), no rules.js
         // mis-guardados.json (export.py --mio) trae la portada dentro, en base64
         thumb: p.cov || null,
       })),
@@ -243,6 +243,7 @@ export async function importItems(parsed, rules, onProgress = () => {}, thumbs =
       url: i.url || prev?.url || `https://www.instagram.com/p/${i.code}/`,
       img: !!prev?.img, _thumb: i.thumb,
       dur: i.dur || prev?.dur || 0, que: i.que || prev?.que || "",
+      dup: i.dup ?? prev?.dup ?? [],  // el mismo clip guardado desde otra cuenta (export.py)
       // estado de la idea (pendiente / haciendo / hecha): solo vive en este movil, no lo pisa el Mac
       st: prev?.st || "", repo: prev?.repo || "",
     };

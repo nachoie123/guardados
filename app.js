@@ -56,7 +56,7 @@ function card(r) {
   const li = document.createElement("li");
   li.innerHTML = `<button class="card" type="button" data-id="${p.id}">
     <div class="cover">${coverHTML(p)}${p.st ? `<span class="st ${p.st}">${p.st === "hecha" ? "✓ Hecha" : "En marcha"}</span>` : ""}${p.src === "tiktok" ? '<span class="src">TikTok</span>' : ""}${r.audio ? `<span class="badge">${AUDIO_ICO}Lo dice en el vídeo</span>` : ""}</div>
-    <h3>${esc(p.t)}</h3>
+    ${cat === "ideas" && p.que ? `<h3 class="que">💡 ${esc(p.que)}</h3>` : `<h3>${esc(p.t)}</h3>`}
     <p class="who">@${esc(p.u)}</p></button>`;
   return li;
 }
@@ -151,6 +151,9 @@ function run() {
   results = r.results;
   for (const k of flt) { const f = (FLT[k] || ST[k])[1]; if (f) results = results.filter(x => f(x.p)); }
   if (flt.has("vistos")) results = [...results].sort((a, b) => (b.p.p || 0) - (a.p.p || 0));
+  // el mismo clip guardado dos veces: sale solo el primero; el otro, en su ficha
+  const visto = new Set();
+  results = results.filter(({ p }) => { if (p.dup?.some(d => visto.has(d))) return false; visto.add(p.id); return true; });
   total = results.length; shown = 0;
   grid.innerHTML = "";
   if (!results.length) {
@@ -309,6 +312,10 @@ function openPost(id, push = true) {
   $("d-open").classList.toggle("tt", p.src === "tiktok");
   $("d-open-txt").textContent = p.src === "tiktok" ? "Abrir en TikTok" : "Abrir en Instagram";
   $("d-cap").textContent = p.c;
+  const otros = (p.dup || []).map(d => ix.posts.find(x => x.id === d)).filter(Boolean);
+  $("d-dup").hidden = !otros.length;
+  $("d-dup").innerHTML = otros.length ? "También lo guardaste de " + otros.map(o =>
+    `<button type="button" class="link" data-post="${o.id}">@${esc(o.u)}${o.src === "tiktok" ? " (TikTok)" : ""}</button>`).join(", ") : "";
   const idea = p.cat.includes("ideas");
   $("d-idea").hidden = !idea;
   if (idea) {
@@ -353,6 +360,10 @@ $("d-cats").addEventListener("click", e => {
   const b = e.target.closest(".chip");
   if (!b) return;
   cat = b.dataset.cat; closeSheet(); run(); scrollTo({ top: 0 });
+});
+$("d-dup").addEventListener("click", e => {
+  const b = e.target.closest("[data-post]");
+  if (b) openPost(b.dataset.post);
 });
 window.addEventListener("popstate", () => {
   const id = location.hash.slice(1);
