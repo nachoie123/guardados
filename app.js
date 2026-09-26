@@ -312,6 +312,7 @@ async function load() {
   $("intro").hidden = mine;
   $("intro-n").textContent = ix.posts.length;
   $("mine-actions").hidden = !mine;
+  macButton();
   $("f-import").textContent = mine ? "Actualizar con un fichero nuevo" : "Importar mis guardados";
   $("built").textContent = mine ? `${fmt(ix.posts.length)} guardados tuyos, en este dispositivo` : `Muestra de ${ix.posts.length} guardados`;
   $("foot").hidden = false;
@@ -319,64 +320,103 @@ async function load() {
 }
 
 // --- sincronizar con el Mac: al abrir la app, si esta vinculada ---
-let syncing = false;
-async function sync() {
-  if (syncing || !store.syncKey() || !navigator.onLine) return;
-  syncing = true;
-  try {
-    const r = await store.syncNow(rules, (fase, n, t) => {
-      status.textContent = fase === "datos" ? "Trayendo lo nuevo del Mac…" : `Trayendo portadas del Mac… ${n + 1} de ${t}`;
-    });
-    if (r) {
-      await load();
-      status.textContent = `Del Mac: ${fmt(r.posts)} guardados nuevos, ${fmt(r.covers)} portadas. ` + status.textContent;
-    } else if (/^Trayendo/.test(status.textContent)) run();
-  } catch {
-    run();  // sin red o sin paquetes: se queda lo que habia, sin ruido
-  } finally { syncing = false; }
+let syncing = null;
+function sync(onProgress) {
+  if (syncing) return syncing;
+  if (!store.syncKey()) return Promise.resolve(null);
+  syncing = (async () => {
+    try {
+      const r = await store.syncNow(rules, (fase, n, t) => {
+        onProgress?.(fase, n, t);
+        status.textContent = fase === "datos" ? "Trayendo lo nuevo del Mac…" : `Trayendo portadas del Mac… ${fmt(n)} de ${fmt(t)}`;
+      });
+      if (r) {
+        await load();
+        status.textContent = `Del Mac: ${fmt(r.posts)} guardados nuevos, ${fmt(r.covers)} portadas. ` + status.textContent;
+      } else if (/^Trayendo/.test(status.textContent)) run();
+      return r;
+    } catch {
+      run();  // sin red o sin paquetes: se queda lo que habia
+      return { error: true };
+    } finally { syncing = null; }
+  })();
+  return syncing;
 }
-$("link-mac").addEventListener("click", () => {
-  const s = prompt("Pega el enlace del QR de tu Mac (o solo la clave):");
-  if (s == null) return;
-  if (!store.setSyncKey(s)) { impStatus.textContent = "Eso no parece el enlace del QR. Ábrelo desde la cámara o cópialo entero."; return; }
-  impStatus.textContent = "Vinculado. Trayendo tus guardados del Mac…";
-  sync().then(() => { impStatus.textContent = "Vinculado con el Mac: cada vez que abras la app, se pone al día sola."; });
-});
 document.addEventListener("visibilitychange", () => { if (!document.hidden) sync(); });
 
-// lector de QR dentro de la app: la Camara del iPhone abre los enlaces en Safari,
-// no en la app de la pantalla de inicio, asi que el QR se lee desde aqui
+// --- vincular con el Mac: pantalla propia, con tic verde y barra de progreso ---
+// La Camara del iPhone abre los enlaces en Safari, no en la app de la pantalla
+// de inicio (que guarda sus datos aparte): por eso el QR se lee desde aqui.
+const mac = $("mac");
 let scanStream = null;
 function stopScan() {
   scanStream?.getTracks().forEach(t => t.stop()); scanStream = null;
   $("scan").hidden = true;
 }
-$("scan-stop").addEventListener("click", stopScan);
+function macView(v) {
+  $("mac-start").hidden = v !== "start"; $("scan").hidden = v !== "scan"; $("mac-ok").hidden = v !== "ok";
+}
+function macButton() {
+  $("f-mac").textContent = store.syncKey() ? "✓ Vinculado con el Mac · traer lo nuevo" : "Vincular con el Mac";
+}
+document.addEventListener("click", e => {
+  if (!e.target.closest("[data-open-mac]")) return;
+  if (store.syncKey()) { mac.showModal(); linked(); return; }  // ya vinculado: sincronizar ahora
+  macView("start"); mac.showModal();
+});
+$("mac-close").addEventListener("click", () => mac.close());
+mac.addEventListener("close", () => { stopScan(); macButton(); });
+$("scan-stop").addEventListener("click", () => { stopScan(); macView("start"); });
+$("mac-done").addEventListener("click", () => mac.close());
+
+async function linked() {
+  macView("ok");
+  const ok = $("mac-ok"), bar = $("mac-bar").firstElementChild, msg = $("mac-msg");
+  ok.classList.remove("err"); $("mac-done").hidden = true;
+  $("mac-ok-t").textContent = "Vinculado con el Mac";
+  bar.style.width = "4%"; msg.textContent = "Conectando con el Mac…";
+  navigator.vibrate?.(40);
+  const r = await sync((fase, n, t) => {
+    bar.style.width = Math.max(4, Math.round(100 * n / Math.max(t, 1))) + "%";
+    msg.textContent = fase === "datos" ? "Trayendo tus guardados…" : `Trayendo portadas… ${fmt(n)} de ${fmt(t)}`;
+  });
+  bar.style.width = "100%";
+  if (r?.error) {
+    ok.classList.add("err"); $("mac-ok-t").textContent = "QR leído, pero no llego al Mac";
+    msg.textContent = "Sin conexión o la red bloquea la web. Prueba con datos móviles; se reintenta sola al abrir la app.";
+  } else msg.textContent = r?.covers || r?.posts
+    ? `Listo: ${fmt(r.posts)} guardados nuevos y ${fmt(r.covers)} portadas.` : "Todo al día: no faltaba nada.";
+  $("mac-done").hidden = false;
+  macButton();
+}
+function gotKey(s) {
+  if (!store.setSyncKey(s)) return false;
+  stopScan(); linked(); return true;
+}
+$("link-mac").addEventListener("click", () => {
+  const s = prompt("Pega el enlace del QR de tu Mac (o solo la clave):");
+  if (s != null && !gotKey(s)) alert("Eso no parece el enlace del QR. Cópialo entero.");
+});
 $("scan-mac").addEventListener("click", async () => {
   if (!window.jsQR) await new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = "vendor/jsQR.js"; sc.onload = res; sc.onerror = rej; document.head.append(sc); }).catch(() => {});
   try { scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false }); }
-  catch { impStatus.textContent = "No puedo usar la cámara. Dale permiso en Ajustes o usa «pegar el enlace»."; return; }
+  catch { alert("No puedo usar la cámara. Dale permiso en Ajustes o usa «pegar el enlace»."); return; }
   const v = $("scan-v"), cv = document.createElement("canvas"), cx = cv.getContext("2d", { willReadFrequently: true });
-  v.srcObject = scanStream; $("scan").hidden = false; await v.play().catch(() => {});
-  impStatus.textContent = "Apunta al QR de la pantalla del Mac…";
-  const tick = () => {
+  v.srcObject = scanStream; macView("scan"); await v.play().catch(() => {});
+  let last = 0;
+  const tick = t => {
     if (!scanStream) return;
-    if (v.videoWidth && window.jsQR) {
-      const w = 480, h = Math.round(v.videoHeight * w / v.videoWidth);
+    if (t - last > 150 && v.videoWidth && window.jsQR) {  // ~7 lecturas por segundo: sobra y no calienta
+      last = t;
+      const w = 400, h = Math.round(v.videoHeight * w / v.videoWidth);
       cv.width = w; cv.height = h; cx.drawImage(v, 0, 0, w, h);
-      const code = jsQR(cx.getImageData(0, 0, w, h).data, w, h);
-      if (code?.data?.includes("#k=") && store.setSyncKey(code.data)) {
-        stopScan();
-        impStatus.textContent = "Vinculado. Trayendo tus guardados del Mac…";
-        sync().then(() => { impStatus.textContent = "Vinculado con el Mac: cada vez que abras la app, se pone al día sola."; });
-        return;
-      }
+      const code = jsQR(cx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: "dontInvert" });
+      if (code?.data?.includes("#k=") && gotKey(code.data)) return;
     }
     requestAnimationFrame(tick);
   };
-  tick();
+  requestAnimationFrame(tick);
 });
-imp.addEventListener("close", stopScan);
 
 async function main() {
   rules = makeRules(await (await fetch("rules-data.json")).json());

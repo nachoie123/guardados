@@ -36,12 +36,14 @@
   <section class="intro" id="intro" hidden>
     <p><b>Esto es una muestra</b>: <span id="intro-n">34</span> reels guardados por Nacho. Busca como hablarías, «algo para cenar rápido», «prácticas de finanzas».</p>
     <button type="button" class="btn" data-open-import>Busca en los tuyos</button>
+    <button type="button" class="link" data-open-mac>¿Ya los tienes en tu Mac? Vincúlalo</button>
   </section>
   <p class="status" id="status" aria-live="polite">Cargando tus guardados…</p>
   <ul class="grid" id="grid"></ul>
   <div id="more" aria-hidden="true"></div>
   <footer class="foot" id="foot" hidden>
     <p id="built"></p>
+    <button type="button" class="btn mac-btn" id="f-mac" data-open-mac>Vincular con el Mac</button>
     <button type="button" class="link" data-open-import id="f-import">Importar mis guardados</button>
     <span id="mine-actions" hidden>
       <button type="button" class="link" id="backup">Copia de seguridad</button>
@@ -66,6 +68,32 @@
         <span id="d-open-txt">Abrir en Instagram</span>
       </a>
       <p class="d-cap" id="d-cap"></p>
+    </div>
+  </div>
+</dialog>
+
+<dialog class="sheet" id="mac" aria-labelledby="mac-title">
+  <div class="sheet-body mac">
+    <button class="close" id="mac-close" type="button" aria-label="Cerrar">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+    </button>
+    <h2 id="mac-title">Vincular con el Mac</h2>
+    <div id="mac-start">
+      <p class="muted">En el Mac, abre el QR (<b>tools/sync-pack.py --qr</b>). Aquí, toca el botón y apunta la cámara a la pantalla. Después, la app se pone al día sola cada vez que la abres.</p>
+      <button type="button" class="btn" id="scan-mac">Escanear el QR</button>
+      <button type="button" class="link" id="link-mac">o pegar el enlace</button>
+    </div>
+    <div class="scan" id="scan" hidden>
+      <video id="scan-v" playsinline muted></video>
+      <p class="muted">Apunta al QR de la pantalla del Mac…</p>
+      <button type="button" class="link" id="scan-stop">Cancelar</button>
+    </div>
+    <div class="mac-ok" id="mac-ok" hidden>
+      <div class="tick" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+      <p class="mac-ok-t" id="mac-ok-t">QR leído</p>
+      <div class="bar" id="mac-bar"><i></i></div>
+      <p class="muted" id="mac-msg" aria-live="polite">Conectando con el Mac…</p>
+      <button type="button" class="btn" id="mac-done" hidden>Ver mis guardados</button>
     </div>
   </div>
 </dialog>
@@ -106,16 +134,6 @@
       </li>
     </ol>
     <p class="imp-status" id="imp-status" aria-live="polite"></p>
-    <div class="link-mac">
-      <h3>¿Tienes Guardados en tu Mac?</h3>
-      <p class="muted">Escanea el QR que da <b>tools/sync-pack.py --qr</b> y listo: la app se pone al día sola cada vez que la abres.</p>
-      <button type="button" class="btn" id="scan-mac">Escanear el QR del Mac</button>
-      <button type="button" class="link" id="link-mac">o pegar el enlace</button>
-      <div class="scan" id="scan" hidden>
-        <video id="scan-v" playsinline muted></video>
-        <button type="button" class="link" id="scan-stop">Cancelar</button>
-      </div>
-    </div>
     <details class="muted">
       <summary>¿Prefieres la descarga oficial de Instagram?</summary>
       <p>En Instagram: <b>Centro de cuentas → Tu información y permisos → Descargar tu información</b>, elige solo «Guardado» y formato JSON. Tarda de minutos a días. Descomprime el zip e importa <b>saved_posts.json</b>. Solo trae la cuenta y el enlace de cada post (sin texto ni portada), así que el buscador encuentra mucho menos.</p>

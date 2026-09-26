@@ -335,23 +335,31 @@ export async function syncNow(rules, onProgress = () => {}) {
   }
   const rows = new Map((await loadPosts()).filter(p => !p.img).map(p => [p.id, p]));
   const packs = ix.covers.filter(p => p.ids.some(id => rows.has(id)));
+  const want = packs.reduce((n, p) => n + p.ids.filter(id => rows.has(id)).length, 0);
   const d = await db();
-  for (const [n, p] of packs.entries()) {
-    onProgress("portadas", n, packs.length);
+  const breathe = () => new Promise(r => setTimeout(r, 0));  // que la pantalla no se congele
+  onProgress("portadas", 0, want);
+  for (const p of packs) {
     const b = await unseal(k, await getBin(p.f));
     const len = new DataView(b.buffer, b.byteOffset).getUint32(0);
-    let off = 4 + len;
-    const tx = d.transaction(["posts", "covers"], "readwrite");
+    let off = 4 + len, batch = [];
+    const flush = async () => {
+      const tx = d.transaction(["posts", "covers"], "readwrite");
+      for (const [row, buf] of batch) {
+        tx.objectStore("covers").put(buf, row.id);
+        tx.objectStore("posts").put({ ...row, img: true });
+      }
+      await done(tx);
+      covers += batch.length; batch = [];
+      onProgress("portadas", covers, want);
+      await breathe();
+    };
     for (const [id, size] of JSON.parse(new TextDecoder().decode(b.subarray(4, 4 + len)))) {
       const row = rows.get(id);
-      if (row) {
-        tx.objectStore("covers").put(b.slice(off, off + size).buffer, id);
-        tx.objectStore("posts").put({ ...row, img: true });
-        covers++;
-      }
+      if (row) { batch.push([row, b.slice(off, off + size).buffer]); if (batch.length >= 100) await flush(); }
       off += size;
     }
-    await done(tx);
+    if (batch.length) await flush();
   }
   return posts || covers ? { posts, covers } : null;
 }

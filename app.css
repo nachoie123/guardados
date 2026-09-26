@@ -233,7 +233,20 @@ main { padding: 8px 16px calc(var(--safe-b) + 24px); max-width: 1100px; margin: 
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 
-.link-mac { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border); }
-.link-mac h3 { margin: 0 0 6px; font-size: 16px; }
 .scan { margin-top: 12px; }
 .scan video { width: 100%; max-width: 360px; aspect-ratio: 1; object-fit: cover; border-radius: var(--radius); background: #000; display: block; }
+.mac-btn { max-width: 320px; margin: 0 auto 4px; display: block; }
+.mac #mac-start .link, .intro .link { display: block; margin: 4px auto 0; }
+.mac-ok { text-align: center; padding: 12px 0 4px; }
+.tick { width: 88px; height: 88px; margin: 8px auto 12px; border-radius: 50%; background: #16A34A; display: grid; place-items: center;
+  animation: pop 320ms cubic-bezier(.2, 1.4, .4, 1); }
+.tick svg { width: 52px; height: 52px; fill: none; stroke: #fff; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: 24; stroke-dashoffset: 24; animation: draw 360ms 180ms ease-out forwards; }
+@keyframes pop { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+.mac-ok-t { font-size: 20px; font-weight: 700; margin: 0 0 14px; }
+.bar { height: 8px; border-radius: 99px; background: var(--surface-2); overflow: hidden; margin: 0 auto 8px; max-width: 320px; }
+.bar i { display: block; height: 100%; width: 0; background: #16A34A; transition: width var(--t-med) ease-out; }
+.mac-ok.err .tick { background: var(--accent); }
+@media (prefers-reduced-motion: reduce) { .tick, .tick svg { animation: none; stroke-dashoffset: 0; } }
+[hidden] { display: none !important; }
