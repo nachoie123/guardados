@@ -306,8 +306,7 @@ main { padding: 8px 16px calc(var(--safe-b) + 24px); max-width: 1100px; margin: 
 .filters button { flex: none; min-height: 34px; padding: 0 12px; border-radius: 999px; border: 1px dashed var(--border); background: none; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; }
 .filters button[aria-pressed="true"] { border-style: solid; border-color: var(--text); background: var(--text); color: var(--bg); }
 /* para recordar + respuesta */
-.memo, .answer { margin: 14px 0 4px; }
-.memo h2 { margin: 0 0 8px; font-size: 15px; }
+.answer { margin: 14px 0 4px; }
 .memo-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .memo-row button { padding: 0; border: 0; background: none; text-align: left; color: var(--text); font: inherit; }
 .memo-row .cover { aspect-ratio: 3 / 4; border-radius: 10px; }

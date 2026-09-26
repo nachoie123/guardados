@@ -140,21 +140,8 @@ $("filters").addEventListener("click", e => {
   run();
 });
 
-// --- para recordar: 3 guardados de hace mas de medio ano, distintos cada dia ---
-function renderMemo(show) {
-  const old = show ? ix.posts.filter(p => p.d && Date.now() / 1000 - p.d > 182 * 86400) : [];
-  $("memo").hidden = old.length < 3;
-  if (old.length < 3) return;
-  let seed = Math.floor(Date.now() / 864e5);
-  const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
-  const pick = new Set();
-  while (pick.size < 3) pick.add(old[Math.floor(rnd() * old.length)]);
-  $("memo-row").innerHTML = [...pick].map(p => miniCard(p, p.d ? "Hace " + ago(p.d) : "")).join("");
-  hydrate($("memo-row"));
-}
-const ago = d => { const m = Math.round((Date.now() / 1000 - d) / (30 * 86400)); return m >= 12 ? `${Math.floor(m / 12)} año${m >= 24 ? "s" : ""}` : `${m} meses`; };
 const miniCard = (p, sub) => `<button type="button" data-id="${p.id}"><div class="cover">${coverHTML(p)}</div><small>${esc(sub || p.t)}</small></button>`;
-for (const row of ["memo-row", "answer-refs"]) $(row).addEventListener("click", e => { const b = e.target.closest("[data-id]"); if (b) openPost(b.dataset.id); });
+for (const row of ["answer-refs"]) $(row).addEventListener("click", e => { const b = e.target.closest("[data-id]"); if (b) openPost(b.dataset.id); });
 
 function run() {
   const text = q.value.trim();
@@ -176,7 +163,6 @@ function run() {
     ? `${total} ${total === 1 ? "resultado" : "resultados"}, los más útiles primero`
     : `${total} guardados, ${flt.has("vistos") ? "los más vistos" : "los más recientes"} primero`;
   renderChips(r.cats);
-  renderMemo(mine && !text && !cat && !flt.size);
   const ask = text.length >= 3 && !!store.askKey();
   $("ask-btn").hidden = !ask;
   if (ask) $("ask-btn").textContent = `✨ Pregúntale a tus guardados: «${text}»`;
