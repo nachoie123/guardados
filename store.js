@@ -31,9 +31,49 @@ export async function loadPosts() {
   } catch { return []; }
 }
 
+// Las portadas se guardan como bytes (ArrayBuffer), no como Blob: en el iPhone,
+// sobre todo abierta desde la pantalla de inicio, WebKit pierde el fichero que
+// hay detras de un Blob guardado ("WebKitBlobResource error 1") y la portada sale
+// en blanco. Las viejas (Blob) se pasan a bytes al leerlas; si ya no se pueden
+// leer -> null, y quien llama la marca para volver a bajarla (markNoCover).
+const jpeg = v => new Blob([v], { type: "image/jpeg" });
 export async function getCover(id) {
   const d = await db();
-  return req(d.transaction("covers").objectStore("covers").get(id));
+  const v = await req(d.transaction("covers").objectStore("covers").get(id));
+  if (!v) return null;
+  if (!(v instanceof Blob)) return jpeg(v);
+  const buf = await v.arrayBuffer();  // lanza si WebKit perdio el fichero
+  if (!buf.byteLength) throw new Error("vacia");
+  const tx = d.transaction("covers", "readwrite");
+  tx.objectStore("covers").put(buf, id);
+  await done(tx);
+  return jpeg(buf);
+}
+
+export async function markNoCover(ids) {
+  const d = await db();
+  const tx = d.transaction(["posts", "covers"], "readwrite");
+  for (const id of ids) {
+    const row = await req(tx.objectStore("posts").get(id));
+    if (row) tx.objectStore("posts").put({ ...row, img: false });
+    tx.objectStore("covers").delete(id);
+  }
+  await done(tx);
+}
+
+// Una pasada por todas: Blob -> bytes, y las ilegibles a reparar. Devuelve cuantas estaban rotas.
+export async function checkCovers(onProgress = () => {}) {
+  const d = await db();
+  const ids = await req(d.transaction("covers").objectStore("covers").getAllKeys());
+  const bad = [];
+  for (let i = 0; i < ids.length; i += 50) {
+    for (const id of ids.slice(i, i + 50)) {
+      try { if (!(await getCover(id))) bad.push(id); } catch { bad.push(id); }
+    }
+    onProgress(Math.min(i + 50, ids.length), ids.length);
+  }
+  if (bad.length) await markNoCover(bad);
+  return bad.length;
 }
 
 export async function clearAll() {
@@ -213,7 +253,7 @@ export async function importItems(parsed, rules, onProgress = () => {}, thumbs =
   thumbs ||= async function* () { for (const p of todo.values()) yield [p.id, p._thumb]; };
   let n = 0, ok = 0, batch = [], failed = [];
   const save = async (pairs, retry) => {
-    const got = await Promise.all(pairs.map(([p, t]) => cover(t).then(b => [p, t, b], () => [p, t, null])));
+    const got = await Promise.all(pairs.map(([p, t]) => cover(t).then(b => b.arrayBuffer()).then(b => [p, t, b], () => [p, t, null])));
     const tx = d.transaction(["posts", "covers"], "readwrite");
     for (const [p, t, b] of got) {
       if (!b) { if (!retry) failed.push([p, t]); continue; }
@@ -305,7 +345,7 @@ export async function syncNow(rules, onProgress = () => {}) {
     for (const [id, size] of JSON.parse(new TextDecoder().decode(b.subarray(4, 4 + len)))) {
       const row = rows.get(id);
       if (row) {
-        tx.objectStore("covers").put(new Blob([b.subarray(off, off + size)], { type: "image/jpeg" }), id);
+        tx.objectStore("covers").put(b.slice(off, off + size).buffer, id);
         tx.objectStore("posts").put({ ...row, img: true });
         covers++;
       }

@@ -71,9 +71,28 @@ async function hydrate(root) {
     if (!coverURL.has(id)) {
       const b = await store.getCover(id).catch(() => null);
       coverURL.set(id, b ? URL.createObjectURL(b) : "");
+      if (!b) broken.add(id);
     }
-    if (coverURL.get(id)) img.src = coverURL.get(id);
+    if (coverURL.get(id)) {
+      img.onerror = () => { broken.add(id); repairSoon(); };
+      img.src = coverURL.get(id);
+    }
   }
+  repairSoon();
+}
+// portadas que no se pueden leer: se marcan y, si la app esta vinculada al Mac,
+// se vuelven a bajar solas
+const broken = new Set();
+let repairT;
+function repairSoon() {
+  if (!broken.size) return;
+  clearTimeout(repairT);
+  repairT = setTimeout(async () => {
+    const ids = [...broken]; broken.clear();
+    await store.markNoCover(ids).catch(() => {});
+    for (const id of ids) coverURL.delete(id);
+    sync();
+  }, 1500);
 }
 
 function renderChips(hint = []) {
@@ -337,6 +356,14 @@ async function main() {
   }
   await load();
   if (location.hash.length > 1) openPost(location.hash.slice(1), false);
+  let checked = null;
+  try { checked = localStorage.getItem("guardados.covers.v2"); } catch {}
+  if (mine && !checked) {
+    const n = await store.checkCovers((i, t) => { status.textContent = `Revisando portadas… ${fmt(i)} de ${fmt(t)}`; }).catch(() => -1);
+    try { if (n >= 0) localStorage.setItem("guardados.covers.v2", "1"); } catch {}
+    if (n > 0) await load();
+    else run();
+  }
   sync();
 }
 main().catch(() => { status.textContent = "No he podido cargar la app. Ábrela una vez con conexión."; });
