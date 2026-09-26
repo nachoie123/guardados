@@ -101,7 +101,7 @@ const stem = w => w.length > 5 && w.endsWith("es") ? w.slice(0, -2) : w.length >
 
 // kw: palabras clave ocultas (texto en pantalla + relacionadas), solo en
 // los guardados de Nacho y la muestra: ver keywords.py
-const FIELDS = [["t", 3], ["c", 1.5], ["u", 1.5], ["n", 1], ["tr", 0.6], ["kw", 0.8]];
+const FIELDS = [["t", 3], ["c", 1.5], ["u", 1.5], ["n", 1], ["tr", 0.6], ["kw", 0.8], ["que", 1.2]];
 
 export function buildIndex(data) {
   const posts = data.posts;

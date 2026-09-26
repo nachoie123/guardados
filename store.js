@@ -98,7 +98,8 @@ export function parseFile(json) {
         code: p.id, user: p.u || "", name: p.n || "", caption: p.c || "", taken_at: p.d || null,
         video: !!p.v, plays: p.p || 0, tr: p.tr || "", kw: p.kw || "",
         src: p.src || "instagram", url: p.url || null,
-        ideas: (p.cat || []).includes("ideas"),  // carpeta Ideas: la decide el Mac (ideas.py), no rules.js
+        ideas: (p.cat || []).includes("ideas"),
+        dur: p.dur || 0, que: p.que || "",  // carpeta Ideas: la decide el Mac (ideas.py), no rules.js
         // mis-guardados.json (export.py --mio) trae la portada dentro, en base64
         thumb: p.cov || null,
       })),
@@ -241,6 +242,9 @@ export async function importItems(parsed, rules, onProgress = () => {}, thumbs =
       src: i.src || prev?.src || "instagram",
       url: i.url || prev?.url || `https://www.instagram.com/p/${i.code}/`,
       img: !!prev?.img, _thumb: i.thumb,
+      dur: i.dur || prev?.dur || 0, que: i.que || prev?.que || "",
+      // estado de la idea (pendiente / haciendo / hecha): solo vive en este movil, no lo pisa el Mac
+      st: prev?.st || "", repo: prev?.repo || "",
     };
   });
 
@@ -284,11 +288,20 @@ export async function importItems(parsed, rules, onProgress = () => {}, thumbs =
 }
 
 // Copia de seguridad: lo mismo que importa (sin portadas, que se pueden rebajar)
+// estado de una idea: "", "haciendo" o "hecha" (+ enlace al repo opcional)
+export async function setEstado(id, st, repo) {
+  const d = await db();
+  const tx = d.transaction("posts", "readwrite");
+  const row = await req(tx.objectStore("posts").get(id));
+  if (row) tx.objectStore("posts").put({ ...row, st, repo: repo ?? row.repo ?? "" });
+  await done(tx);
+}
+
 export async function exportBackup() {
   const posts = await loadPosts();
   return new Blob([JSON.stringify({ app: "guardados", v: 1, backup: true, pulled_at: Date.now(),
     items: posts.map(p => ({ code: p.id, user: p.u, name: p.n, caption: p.c, taken_at: p.d, type: p.v ? 2 : 1, plays: p.p,
-      src: p.src, url: p.url, tr: p.src === "tiktok" ? p.tr : undefined })) })],
+      src: p.src, url: p.url, tr: p.src === "tiktok" ? p.tr : undefined, st: p.st || undefined, repo: p.repo || undefined })) })],
     { type: "application/json" });
 }
 
@@ -326,6 +339,7 @@ export async function syncNow(rules, onProgress = () => {}) {
   const k = syncKey();
   if (!k) return null;
   const ix = JSON.parse(new TextDecoder().decode(await unseal(k, await getBin("index.bin"))));
+  if (ix.gk) ls.set(ASK_KEY, ix.gk);  // clave de Gemini para "Preguntame" (viaja cifrada)
   let posts = 0, covers = 0;
   if (ix.posts && ix.posts !== ls.get(SYNC_POSTS)) {
     onProgress("datos", 0, 1);
@@ -364,4 +378,36 @@ export async function syncNow(rules, onProgress = () => {}) {
     if (batch.length) await flush();
   }
   return posts || covers ? { posts, covers } : null;
+}
+
+// --- preguntame (Gemini desde el movil) ---
+const ASK_KEY = "guardados.gk", ASK_N = "guardados.ask.n", ASK_MAX = 40;
+export const askKey = () => ls.get(ASK_KEY);
+export async function ask(question, posts) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [day, n] = (ls.get(ASK_N) || "").split("|");
+  const used = day === today ? +n : 0;
+  if (used >= ASK_MAX) throw new Error("tope");
+  ls.set(ASK_N, `${today}|${used + 1}`);
+  const prompt = `Eres el buscador personal de Nacho. Estos son guardados suyos de Instagram y TikTok (JSON, uno por linea):
+${posts.map(p => JSON.stringify(p)).join("\n")}
+
+Pregunta de Nacho: ${question}
+
+Responde en espanol, directo y breve (maximo 120 palabras), como un amigo que conoce sus guardados.
+Usa SOLO estos guardados. Cita cada uno que menciones con su id entre corchetes, p. ej. [C4ntd3oN8ak].
+Si pide ideas o proyectos, prioriza los de categoria Ideas y los que no estan hechos (st vacio).
+Si nada encaja, dilo y sugiere como buscarlo.`;
+  // Flash-Lite primero; si su cupo diario se acaba (429), el otro modelo tiene el suyo
+  let r;
+  for (const m of ["gemini-3.1-flash-lite", "gemini-3.8-flash"]) {
+    r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${encodeURIComponent(askKey())}`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.4, maxOutputTokens: 600 } }),
+    });
+    if (r.status !== 429 && r.status !== 503) break;
+  }
+  if (!r.ok) throw new Error("gemini " + r.status);
+  const d = await r.json();
+  return ((d.candidates?.[0]?.content?.parts) || []).map(p => p.text || "").join("").trim() || "No he sabido responder.";
 }

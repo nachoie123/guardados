@@ -55,7 +55,7 @@ function card(r) {
   const p = r.p;
   const li = document.createElement("li");
   li.innerHTML = `<button class="card" type="button" data-id="${p.id}">
-    <div class="cover">${coverHTML(p)}${p.src === "tiktok" ? '<span class="src">TikTok</span>' : ""}${r.audio ? `<span class="badge">${AUDIO_ICO}Lo dice en el vídeo</span>` : ""}</div>
+    <div class="cover">${coverHTML(p)}${p.st ? `<span class="st ${p.st}">${p.st === "hecha" ? "✓ Hecha" : "En marcha"}</span>` : ""}${p.src === "tiktok" ? '<span class="src">TikTok</span>' : ""}${r.audio ? `<span class="badge">${AUDIO_ICO}Lo dice en el vídeo</span>` : ""}</div>
     <h3>${esc(p.t)}</h3>
     <p class="who">@${esc(p.u)}</p></button>`;
   return li;
@@ -116,28 +116,102 @@ function renderChips(hint = []) {
     .join("");
 }
 
+// --- filtros rapidos (y, dentro de Ideas, por estado) ---
+const FLT = {
+  largos: ["Largos (+1 min)", p => p.dur >= 60],
+  voz: ["Con voz", p => (p.tr || "").length > 40],
+  vistos: ["Más vistos", null],  // no filtra: ordena
+  mes: ["Del último mes", p => p.d && Date.now() / 1000 - p.d < 31 * 86400],
+};
+const ST = { pend: ["Pendientes", p => !p.st], haciendo: ["Haciéndolas", p => p.st === "haciendo"], hecha: ["Hechas", p => p.st === "hecha"] };
+const flt = new Set();
+function renderFilters() {
+  const all = { ...(cat === "ideas" ? ST : {}), ...FLT };
+  for (const k of [...flt]) if (!all[k]) flt.delete(k);
+  $("filters").innerHTML = Object.entries(all).map(([k, [name]]) =>
+    `<button type="button" data-f="${k}" aria-pressed="${flt.has(k)}">${name}</button>`).join("");
+}
+$("filters").addEventListener("click", e => {
+  const b = e.target.closest("[data-f]");
+  if (!b) return;
+  const k = b.dataset.f;
+  if (flt.has(k)) flt.delete(k);
+  else { if (ST[k]) for (const s of Object.keys(ST)) flt.delete(s); flt.add(k); }  // un solo estado a la vez
+  run();
+});
+
+// --- para recordar: 3 guardados de hace mas de medio ano, distintos cada dia ---
+function renderMemo(show) {
+  const old = show ? ix.posts.filter(p => p.d && Date.now() / 1000 - p.d > 182 * 86400) : [];
+  $("memo").hidden = old.length < 3;
+  if (old.length < 3) return;
+  let seed = Math.floor(Date.now() / 864e5);
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  const pick = new Set();
+  while (pick.size < 3) pick.add(old[Math.floor(rnd() * old.length)]);
+  $("memo-row").innerHTML = [...pick].map(p => miniCard(p, p.d ? "Hace " + ago(p.d) : "")).join("");
+  hydrate($("memo-row"));
+}
+const ago = d => { const m = Math.round((Date.now() / 1000 - d) / (30 * 86400)); return m >= 12 ? `${Math.floor(m / 12)} año${m >= 24 ? "s" : ""}` : `${m} meses`; };
+const miniCard = (p, sub) => `<button type="button" data-id="${p.id}"><div class="cover">${coverHTML(p)}</div><small>${esc(sub || p.t)}</small></button>`;
+for (const row of ["memo-row", "answer-refs"]) $(row).addEventListener("click", e => { const b = e.target.closest("[data-id]"); if (b) openPost(b.dataset.id); });
+
 function run() {
   const text = q.value.trim();
   $("clear").hidden = !text;
+  renderFilters();
   const r = search(ix, text, { cat, limit: Infinity });  // todos: la rejilla carga de 40 en 40 al bajar
-  results = r.results; total = r.total; shown = 0;
+  results = r.results;
+  for (const k of flt) { const f = (FLT[k] || ST[k])[1]; if (f) results = results.filter(x => f(x.p)); }
+  if (flt.has("vistos")) results = [...results].sort((a, b) => (b.p.p || 0) - (a.p.p || 0));
+  total = results.length; shown = 0;
   grid.innerHTML = "";
   if (!results.length) {
-    grid.innerHTML = `<li class="empty">Nada por aquí. Prueba a decirlo de otra forma${cat ? " o quita el filtro de categoría" : ""}.</li>`;
+    grid.innerHTML = `<li class="empty">Nada por aquí. Prueba a decirlo de otra forma${cat || flt.size ? " o quita algún filtro" : ""}.</li>`;
   } else renderMore();
-  const where = "";
   $("folder").hidden = !cat;
   $("folder-t").textContent = cat ? label(cat) : "";
   q.placeholder = cat ? "Buscar aquí…" : "¿Qué necesitas?";
   status.textContent = text
-    ? `${total} ${total === 1 ? "resultado" : "resultados"}${where}, los más útiles primero`
-    : `${total} guardados${where}, los más recientes primero`;
+    ? `${total} ${total === 1 ? "resultado" : "resultados"}, los más útiles primero`
+    : `${total} guardados, ${flt.has("vistos") ? "los más vistos" : "los más recientes"} primero`;
   renderChips(r.cats);
+  renderMemo(mine && !text && !cat && !flt.size);
+  const ask = text.length >= 3 && !!store.askKey();
+  $("ask-btn").hidden = !ask;
+  if (ask) $("ask-btn").textContent = `✨ Pregúntale a tus guardados: «${text}»`;
   const url = new URL(location);
   text ? url.searchParams.set("q", text) : url.searchParams.delete("q");
   cat ? url.searchParams.set("cat", cat) : url.searchParams.delete("cat");
   history.replaceState(history.state, "", url);
 }
+
+// --- preguntame: Gemini lee tus guardados mas relacionados y responde ---
+// La clave de Gemini llega cifrada con la sincronizacion (sync-pack.py). Tope: 40 preguntas al dia.
+$("answer-x").addEventListener("click", () => { $("answer").hidden = true; });
+$("ask-btn").addEventListener("click", async () => {
+  const text = q.value.trim();
+  const box = $("answer"), txt = $("answer-txt"), refs = $("answer-refs");
+  box.hidden = false; refs.innerHTML = ""; txt.textContent = "Leyendo tus guardados…";
+  box.scrollIntoView({ behavior: "smooth", block: "start" });
+  // contexto: lo que encuentra el buscador (dentro de la carpeta si estas en una) y, si hay poco, lo mas reciente
+  let ctx = search(ix, text, { cat, limit: 60 }).results.map(r => r.p);
+  if (ctx.length < 20) ctx = ctx.concat((cat ? search(ix, "", { cat, limit: 60 }).results.map(r => r.p) : ix.posts.slice(0, 60)).filter(p => !ctx.includes(p))).slice(0, 60);
+  try {
+    const out = await store.ask(text, ctx.map(p => ({ id: p.id, t: p.t, que: p.que, cat: p.cat.map(label).join(", "), u: p.u,
+      d: p.d ? new Date(p.d * 1000).toISOString().slice(0, 7) : "", st: p.st, txt: ((p.c || "") + " " + (p.tr || "")).slice(0, 260) })));
+    const byId = new Map(ix.posts.map(p => [p.id, p]));
+    const cited = [...new Set([...out.matchAll(/\[([\w-]+)\]/g)].map(m => m[1]))].filter(id => byId.has(id));
+    txt.innerHTML = out.replace(/\s*\[([\w-]+)\]/g, (m, id) => byId.has(id) ? ` <sup>${cited.indexOf(id) + 1}</sup>` : "")
+      .split(/\n{2,}/).map(par => `<p>${esc(par).replace(/&lt;sup&gt;(\d+)&lt;\/sup&gt;/g, "<sup>$1</sup>").replace(/\n/g, "<br>")}</p>`).join("");
+    refs.innerHTML = cited.slice(0, 9).map((id, i) => miniCard(byId.get(id), `${i + 1}. ${byId.get(id).t}`)).join("");
+    hydrate(refs);
+  } catch (e) {
+    txt.textContent = e?.message === "tope" ? "Hoy ya has preguntado 40 veces: mañana más."
+      : /429|503/.test(e?.message) ? "Gemini está saturado ahora mismo (el cupo gratis va por minutos). Prueba en un minuto."
+      : "No he podido preguntar (¿sin conexión?). Prueba otra vez.";
+  }
+});
 
 // --- pellizcar: 2, 3 o 4 portadas por fila, como en la galeria de Fotos ---
 // Abrir los dedos agranda (menos columnas); juntarlos, al reves. Se recuerda.
@@ -248,10 +322,38 @@ function openPost(id, push = true) {
   $("d-open").classList.toggle("tt", p.src === "tiktok");
   $("d-open-txt").textContent = p.src === "tiktok" ? "Abrir en TikTok" : "Abrir en Instagram";
   $("d-cap").textContent = p.c;
+  const idea = p.cat.includes("ideas");
+  $("d-idea").hidden = !idea;
+  if (idea) {
+    $("d-que").textContent = p.que || "Idea para construir";
+    $("d-que").hidden = false;
+    for (const b of $("d-st").children) b.setAttribute("aria-pressed", (p.st || "") === b.dataset.st);
+    $("d-repo").hidden = !p.repo; if (p.repo) $("d-repo").href = p.repo;
+    $("d-repo-set").textContent = p.repo ? "Cambiar el enlace" : "Añadir enlace al proyecto";
+    $("d-idea").dataset.id = p.id;
+  }
   if (push) history.pushState({ post: id }, "", `#${id}`);
   if (!sheet.open) sheet.showModal();
   sheet.scrollTop = 0;
 }
+// estado de la idea: se guarda en el movil y se ve en la tarjeta
+async function saveEstado(st, repo) {
+  const id = $("d-idea").dataset.id, p = ix.posts.find(x => x.id === id);
+  if (!p) return;
+  if (st != null) p.st = st;
+  if (repo != null) p.repo = repo;
+  await store.setEstado(id, p.st || "", p.repo || "");
+  const y = sheet.scrollTop;
+  openPost(id, false);
+  sheet.scrollTop = y;  // que no salte arriba al cambiar el estado
+  const card = grid.querySelector(`[data-id="${CSS.escape(id)}"] .cover`);
+  if (card) { card.querySelector(".st")?.remove(); if (p.st) card.insertAdjacentHTML("beforeend", `<span class="st ${p.st}">${p.st === "hecha" ? "✓ Hecha" : "En marcha"}</span>`); }
+}
+$("d-st").addEventListener("click", e => { const b = e.target.closest("[data-st]"); if (b) saveEstado(b.dataset.st); });
+$("d-repo-set").addEventListener("click", () => {
+  const u = prompt("Enlace al proyecto (GitHub, web…):", ix.posts.find(x => x.id === $("d-idea").dataset.id)?.repo || "https://");
+  if (u != null) saveEstado(null, /^https?:\/\/\S+\.\S+/.test(u.trim()) ? u.trim() : "");
+});
 grid.addEventListener("click", e => {
   const b = e.target.closest(".card");
   if (b) openPost(b.dataset.id);
