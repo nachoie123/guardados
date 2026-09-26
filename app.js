@@ -189,7 +189,8 @@ $("ask-btn").addEventListener("click", async () => {
     const byId = new Map(ix.posts.map(p => [p.id, p]));
     const cited = [...new Set([...out.matchAll(/\[([\w-]+)\]/g)].map(m => m[1]))].filter(id => byId.has(id));
     txt.innerHTML = out.replace(/\s*\[([\w-]+)\]/g, (m, id) => byId.has(id) ? ` <sup>${cited.indexOf(id) + 1}</sup>` : "")
-      .split(/\n{2,}/).map(par => `<p>${esc(par).replace(/&lt;sup&gt;(\d+)&lt;\/sup&gt;/g, "<sup>$1</sup>").replace(/\n/g, "<br>")}</p>`).join("");
+      .split(/\n{2,}/).map(par => `<p>${esc(par).replace(/&lt;sup&gt;(\d+)&lt;\/sup&gt;/g, "<sup>$1</sup>")
+        .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<i>$2</i>").replace(/\n/g, "<br>")}</p>`).join("");
     refs.innerHTML = cited.slice(0, 9).map((id, i) => miniCard(byId.get(id), `${i + 1}. ${byId.get(id).t}`)).join("");
     hydrate(refs);
   } catch (e) {
