@@ -235,3 +235,5 @@ main { padding: 8px 16px calc(var(--safe-b) + 24px); max-width: 1100px; margin: 
 
 .link-mac { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border); }
 .link-mac h3 { margin: 0 0 6px; font-size: 16px; }
+.scan { margin-top: 12px; }
+.scan video { width: 100%; max-width: 360px; aspect-ratio: 1; object-fit: cover; border-radius: var(--radius); background: #000; display: block; }

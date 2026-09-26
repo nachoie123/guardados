@@ -108,8 +108,13 @@
     <p class="imp-status" id="imp-status" aria-live="polite"></p>
     <div class="link-mac">
       <h3>¿Tienes Guardados en tu Mac?</h3>
-      <p class="muted">Escanea con la cámara el QR que da <b>tools/sync-pack.py --qr</b> y listo: la app se pone al día sola cada vez que la abres. Si la usas desde la pantalla de inicio, copia el enlace del QR y pégalo aquí.</p>
-      <button type="button" class="btn" id="link-mac">Pegar el enlace del Mac</button>
+      <p class="muted">Escanea el QR que da <b>tools/sync-pack.py --qr</b> y listo: la app se pone al día sola cada vez que la abres.</p>
+      <button type="button" class="btn" id="scan-mac">Escanear el QR del Mac</button>
+      <button type="button" class="link" id="link-mac">o pegar el enlace</button>
+      <div class="scan" id="scan" hidden>
+        <video id="scan-v" playsinline muted></video>
+        <button type="button" class="link" id="scan-stop">Cancelar</button>
+      </div>
     </div>
     <details class="muted">
       <summary>¿Prefieres la descarga oficial de Instagram?</summary>

@@ -344,6 +344,40 @@ $("link-mac").addEventListener("click", () => {
 });
 document.addEventListener("visibilitychange", () => { if (!document.hidden) sync(); });
 
+// lector de QR dentro de la app: la Camara del iPhone abre los enlaces en Safari,
+// no en la app de la pantalla de inicio, asi que el QR se lee desde aqui
+let scanStream = null;
+function stopScan() {
+  scanStream?.getTracks().forEach(t => t.stop()); scanStream = null;
+  $("scan").hidden = true;
+}
+$("scan-stop").addEventListener("click", stopScan);
+$("scan-mac").addEventListener("click", async () => {
+  if (!window.jsQR) await new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = "vendor/jsQR.js"; sc.onload = res; sc.onerror = rej; document.head.append(sc); }).catch(() => {});
+  try { scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false }); }
+  catch { impStatus.textContent = "No puedo usar la cámara. Dale permiso en Ajustes o usa «pegar el enlace»."; return; }
+  const v = $("scan-v"), cv = document.createElement("canvas"), cx = cv.getContext("2d", { willReadFrequently: true });
+  v.srcObject = scanStream; $("scan").hidden = false; await v.play().catch(() => {});
+  impStatus.textContent = "Apunta al QR de la pantalla del Mac…";
+  const tick = () => {
+    if (!scanStream) return;
+    if (v.videoWidth && window.jsQR) {
+      const w = 480, h = Math.round(v.videoHeight * w / v.videoWidth);
+      cv.width = w; cv.height = h; cx.drawImage(v, 0, 0, w, h);
+      const code = jsQR(cx.getImageData(0, 0, w, h).data, w, h);
+      if (code?.data?.includes("#k=") && store.setSyncKey(code.data)) {
+        stopScan();
+        impStatus.textContent = "Vinculado. Trayendo tus guardados del Mac…";
+        sync().then(() => { impStatus.textContent = "Vinculado con el Mac: cada vez que abras la app, se pone al día sola."; });
+        return;
+      }
+    }
+    requestAnimationFrame(tick);
+  };
+  tick();
+});
+imp.addEventListener("close", stopScan);
+
 async function main() {
   rules = makeRules(await (await fetch("rules-data.json")).json());
   const params = new URLSearchParams(location.search);
