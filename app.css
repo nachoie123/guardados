@@ -112,6 +112,17 @@ main { padding: 8px 16px calc(var(--safe-b) + 24px); max-width: 1100px; margin: 
 }
 @media (min-width: 600px) { .grid { grid-template-columns: repeat(3, 1fr); } }
 @media (min-width: 900px) { .grid { grid-template-columns: repeat(5, 1fr); } }
+/* columnas elegidas pellizcando (app.js): mandan sobre las de arriba */
+.grid[data-cols] { grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); }
+.grid[data-cols="3"] { gap: 12px 8px; }
+.grid[data-cols="4"] { gap: 8px 6px; }
+.grid[data-cols="3"] .card h3 { font-size: 12px; margin-top: 6px; }
+.grid[data-cols="3"] .card .who, .grid[data-cols="4"] .card .who { font-size: 11px; }
+.grid[data-cols="4"] .card h3 { font-size: 11px; margin-top: 4px; -webkit-line-clamp: 1; }
+.grid[data-cols="3"] .cover, .grid[data-cols="4"] .cover { border-radius: 10px; }
+.grid[data-cols="3"] .cover .ph, .grid[data-cols="4"] .cover .ph { padding: 8px; font-size: 12px; }
+.grid[data-cols="4"] .badge { padding: 3px; font-size: 0; }
+.grid[data-cols="4"] .cover .src { font-size: 9px; padding: 1px 5px; right: 4px; top: 4px; }
 .card {
   display: block; width: 100%; padding: 0; border: 0; background: none; text-align: left;
   transition: transform var(--t-fast) ease-out;

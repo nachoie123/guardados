@@ -59,7 +59,7 @@ export function parseFile(json) {
         video: !!p.v, plays: p.p || 0, tr: p.tr || "", kw: p.kw || "",
         src: p.src || "instagram", url: p.url || null,
         // mis-guardados.json (export.py --mio) trae la portada dentro, en base64
-        thumb: p.cov ? "data:image/jpeg;base64," + p.cov : null,
+        thumb: p.cov || null,
       })),
     };
   }
@@ -120,19 +120,70 @@ async function shrink(url) {
   return new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error("toBlob")), "image/jpeg", 0.72));
 }
 
-// La de mis-guardados.json ya viene reducida: se guarda tal cual, sin canvas
-// (en Safari del iPhone, 2.000 canvas seguidos pueden fallar sin avisar).
-function cover(url) {
-  if (!url.startsWith("data:")) return shrink(url);
-  const bin = atob(url.slice(url.indexOf(",") + 1));
-  const u8 = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-  return Promise.resolve(new Blob([u8], { type: "image/jpeg" }));
+// La de mis-guardados.json ya viene reducida (base64 a secas): se guarda tal
+// cual, sin canvas (en Safari del iPhone, 2.000 canvas seguidos pueden fallar sin avisar).
+async function cover(t) {
+  if (/^https?:/.test(t)) return shrink(t);
+  const b64 = t.startsWith("data:") ? t.slice(t.indexOf(",") + 1) : t;
+  let u8;
+  if (Uint8Array.fromBase64) u8 = Uint8Array.fromBase64(b64);
+  else {
+    const bin = atob(b64);
+    u8 = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  }
+  return new Blob([u8], { type: "image/jpeg" });
+}
+
+// --- ficheros grandes, a trozos ---
+// mis-guardados.json pesa ~100 MB. Leido de golpe, la pestana pasa de 1 GB y
+// Safari del iPhone la mata a medias: las portadas que no llegaron a guardarse
+// se quedaban en degradado. export.py lo escribe con un post por linea ("lines":1)
+// y aqui se lee linea a linea, dos veces: primero los datos, luego las portadas.
+async function* lines(file) {
+  const rd = file.stream().pipeThrough(new TextDecoderStream()).getReader();
+  let buf = "";
+  for (;;) {
+    const { value, done } = await rd.read();
+    if (done) break;
+    buf += value;
+    let i;
+    while ((i = buf.indexOf("\n")) >= 0) { yield buf.slice(0, i); buf = buf.slice(i + 1); }
+  }
+  if (buf) yield buf;
+}
+const postLine = l => l.startsWith('{"id":') ? JSON.parse(l.endsWith(",") ? l.slice(0, -1) : l) : null;
+
+// Cualquier fichero: el de lineas, a trozos; el resto, como siempre.
+// Devuelve { parsed, result } o { parsed: null } si no es de guardados.
+export async function importFile(file, rules, onProgress) {
+  const head = await file.slice(0, 200).text();
+  if (!/^\{"built":[^\n]*"lines":1/.test(head) || !file.stream || typeof TextDecoderStream === "undefined") {
+    let parsed;
+    try { parsed = parseFile(JSON.parse(await file.text())); } catch { parsed = null; }
+    if (!parsed?.items.length) return { parsed: null };
+    return { parsed, result: await importItems(parsed, rules, onProgress) };
+  }
+  const posts = [];
+  for await (const l of lines(file)) {
+    const p = postLine(l);
+    if (p?.id) { p.cov = p.cov ? 1 : 0; posts.push(p); }  // la portada, en la segunda vuelta
+  }
+  const parsed = parseFile({ built: (JSON.parse(head.split("\n")[0] + "]}")).built, posts });
+  if (!parsed?.items.length) return { parsed: null };
+  const thumbs = async function* (want) {
+    for await (const l of lines(file)) {
+      const p = postLine(l);
+      if (p?.cov && want.has(p.id)) yield [p.id, p.cov];
+    }
+  };
+  return { parsed, result: await importItems(parsed, rules, onProgress, thumbs) };
 }
 
 // Fusiona con lo que ya hay (por code: el mismo post nunca sale dos veces).
-// onProgress(fase, hechos, total)
-export async function importItems(parsed, rules, onProgress = () => {}) {
+// onProgress(fase, hechos, total). thumbs(ids): de donde salen las portadas
+// (por defecto, del propio parsed; importFile las va leyendo del fichero).
+export async function importItems(parsed, rules, onProgress = () => {}, thumbs = null) {
   const d = await db();
   const old = new Map((await loadPosts()).map(p => [p.id, p]));
   const posts = parsed.items.map(i => {
@@ -156,26 +207,38 @@ export async function importItems(parsed, rules, onProgress = () => {}) {
   for (const p of posts) { const { _thumb, ...row } = p; tx.objectStore("posts").put(row); }
   await done(tx);
 
-  // portadas que faltan, de 6 en 6
-  const todo = posts.filter(p => p._thumb && !p.img);
-  let n = 0, ok = 0;
-  onProgress("portadas", 0, todo.length);
-  for (let i = 0; i < todo.length; i += 6) {
-    const batch = await Promise.all(todo.slice(i, i + 6).map(p => cover(p._thumb).then(b => [p, b], () => [p, null])));
-    tx = d.transaction(["posts", "covers"], "readwrite");
-    for (const [p, b] of batch) {
-      if (!b) continue;
+  // portadas que faltan, de 6 en 6. Reimportar el mismo fichero solo rellena
+  // las que falten; las que fallan se reintentan una vez, de una en una.
+  const todo = new Map(posts.filter(p => p._thumb && !p.img).map(p => [p.id, p]));
+  thumbs ||= async function* () { for (const p of todo.values()) yield [p.id, p._thumb]; };
+  let n = 0, ok = 0, batch = [], failed = [];
+  const save = async (pairs, retry) => {
+    const got = await Promise.all(pairs.map(([p, t]) => cover(t).then(b => [p, t, b], () => [p, t, null])));
+    const tx = d.transaction(["posts", "covers"], "readwrite");
+    for (const [p, t, b] of got) {
+      if (!b) { if (!retry) failed.push([p, t]); continue; }
       const { _thumb, ...row } = p;
       row.img = true; ok++;
       tx.objectStore("covers").put(b, p.id);
       tx.objectStore("posts").put(row);
     }
     await done(tx);
-    n += batch.length;
-    onProgress("portadas", n, todo.length);
+  };
+  onProgress("portadas", 0, todo.size);
+  for await (const [id, t] of thumbs(new Set(todo.keys()))) {
+    const p = todo.get(id);
+    if (!p) continue;
+    p._thumb = null;  // que la memoria se vaya liberando
+    batch.push([p, t]);
+    if (batch.length < 6) continue;
+    await save(batch); n += batch.length; batch = [];
+    onProgress("portadas", n, todo.size);
   }
+  if (batch.length) { await save(batch); n += batch.length; }
+  for (const f of failed) await save([f], true);
+  onProgress("portadas", todo.size, todo.size);
   const total = (await loadPosts()).length;
-  return { imported: posts.length, isNew: posts.filter(p => !old.has(p.id)).length, covers: ok, missing: todo.length - ok, total };
+  return { imported: posts.length, isNew: posts.filter(p => !old.has(p.id)).length, covers: ok, missing: todo.size - ok, total };
 }
 
 // Copia de seguridad: lo mismo que importa (sin portadas, que se pueden rebajar)

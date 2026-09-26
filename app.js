@@ -107,6 +107,45 @@ function run() {
   history.replaceState(history.state, "", url);
 }
 
+// --- pellizcar: 2, 3 o 4 portadas por fila, como en la galeria de Fotos ---
+// Abrir los dedos agranda (menos columnas); juntarlos, al reves. Se recuerda.
+const COLS_KEY = "guardados.cols";
+function setCols(n, keep = true) {
+  n = Math.max(2, Math.min(4, n));
+  if (+grid.dataset.cols === n) return;
+  // que la tarjeta que tenias arriba siga arriba al cambiar el tamano
+  const top = [...grid.children].find(li => li.getBoundingClientRect().bottom > 160);
+  const y = top?.getBoundingClientRect().top;
+  grid.dataset.cols = n;
+  grid.style.setProperty("--cols", n);
+  if (top) scrollBy(0, top.getBoundingClientRect().top - y);
+  if (keep) try { localStorage.setItem(COLS_KEY, n); } catch {}
+}
+try { const n = +localStorage.getItem(COLS_KEY); if (n) setCols(n, false); } catch {}
+const cols = () => +grid.dataset.cols || (innerWidth >= 900 ? 5 : innerWidth >= 600 ? 3 : 2);
+let pinch = 1;  // escala desde el ultimo cambio de columnas
+function onPinch(scale) {
+  if (scale / pinch > 1.3) { setCols(Math.min(cols(), 4) - 1); pinch = scale; }
+  else if (scale / pinch < 0.77) { setCols(Math.min(cols(), 3) + 1); pinch = scale; }
+}
+// Safari (iPhone y trackpad del Mac): gesture*. preventDefault = que no amplie la pagina entera
+for (const ev of ["gesturestart", "gesturechange", "gestureend"]) {
+  document.addEventListener(ev, e => {
+    if (sheet.open || e.target.closest?.("dialog")) return;
+    e.preventDefault();
+    if (ev === "gesturestart") pinch = 1; else if (ev === "gesturechange") onPinch(e.scale);
+  }, { passive: false });
+}
+// Chrome/Android: dos dedos a mano
+let d0 = 0;
+const dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+document.addEventListener("touchstart", e => { if (e.touches.length === 2 && !window.GestureEvent) { d0 = dist(e.touches); pinch = 1; } }, { passive: true });
+document.addEventListener("touchmove", e => {
+  if (e.touches.length !== 2 || !d0 || window.GestureEvent) return;
+  e.preventDefault(); onPinch(dist(e.touches) / d0);
+}, { passive: false });
+document.addEventListener("touchend", () => { d0 = 0; });
+
 let timer;
 q.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(run, 120); });
 $("form").addEventListener("submit", e => { e.preventDefault(); q.blur(); run(); });
@@ -210,15 +249,15 @@ $("file").addEventListener("change", async e => {
   const f = e.target.files[0];
   e.target.value = "";
   if (!f) return;
-  let parsed;
-  try { parsed = store.parseFile(JSON.parse(await f.text())); } catch { parsed = null; }
-  if (!parsed?.items.length) { impStatus.textContent = "Ese fichero no parece de guardados. Usa el que baja el marcador (guardados-fecha.json)."; return; }
-  const tt = parsed.src === "tiktok", days = tt ? 2 : 4;
-  const old = parsed.pulledAt && Date.now() - parsed.pulledAt > days * 864e5;
+  const notMine = () => { impStatus.textContent = "Ese fichero no parece de guardados. Usa el que baja el marcador (guardados-fecha.json)."; };
+  impStatus.textContent = "Leyendo el fichero…";
   try {
-    const r = await store.importItems(parsed, rules, (fase, n, t) => {
-      impStatus.textContent = fase === "posts" ? `Ordenando ${fmt(t)} guardados…` : `Bajando portadas… ${fmt(n)} de ${fmt(t)}`;
+    const { parsed, result: r } = await store.importFile(f, rules, (fase, n, t) => {
+      impStatus.textContent = fase === "posts" ? `Ordenando ${fmt(t)} guardados…` : `Guardando portadas… ${fmt(n)} de ${fmt(t)}`;
     });
+    if (!parsed) return notMine();
+    const tt = parsed.src === "tiktok", days = tt ? 2 : 4;
+    const old = parsed.pulledAt && Date.now() - parsed.pulledAt > days * 864e5;
     impStatus.textContent = `Listo: ${fmt(r.total)} guardados (${fmt(r.isNew)} nuevos), ${fmt(r.covers)} portadas nuevas.` +
       (r.missing ? ` ${fmt(r.missing)} sin portada${old ? `: el fichero tiene más de ${days} días, vuelve a pulsar el marcador` : ""}.` : "") +
       (parsed.kind === "oficial" ? ` La descarga oficial no trae el texto de los ${tt ? "vídeos" : "posts"}: con el marcador buscarás mucho mejor.` : "");
