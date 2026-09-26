@@ -1,7 +1,7 @@
 // Sin conexion: la app y la muestra se guardan al abrirla; las portadas de la
 // muestra, segun se ven. Los guardados de cada uno no pasan por aqui: viven en
 // IndexedDB (store.js). Todo va "red primero": con conexion, la ultima version.
-const SHELL = "shell-v11";
+const SHELL = "shell-v12";
 const FILES = ["./", "index.html", "app.css", "app.js", "search.js", "rules.js", "store.js",
   "rules-data.json", "bookmarklet.js", "bookmarklet-tiktok.js", "demo/posts.json", "manifest.webmanifest", "vendor/jsQR.js",
   "icons/icon-192.png", "icons/icon-512.png", "icons/icon-180.png"];

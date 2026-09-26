@@ -203,13 +203,13 @@ function folders() {
   $("folders").innerHTML = [...groups].filter(([, ps]) => ps.length).map(([c, ps]) => {
     const p = recent(ps);
     const ph = CATS[c] ? { ...p, img: false, cat: [c] } : p;  // sin portada: el color de la carpeta
-    return `<li><button type="button" data-cat="${c}" aria-current="${(cat || "") === c}">
-      <div class="cover">${coverHTML(p?.img ? p : ph)}<span class="f-name">${esc(c ? label(c) : "Todo")}<small>${fmt(ps.length)}</small></span></div></button></li>`;
+    return `<li><button type="button" class="f-row" data-cat="${c}" aria-current="${(cat || "") === c}">
+      <span class="f-ico">${coverHTML(p?.img ? p : ph)}</span><span class="f-name">${esc(c ? label(c) : "Todo")}</span><small>${fmt(ps.length)}</small></button></li>`;
   }).join("");
   hydrate($("folders"));
 }
-$("menu-btn").addEventListener("click", () => { folders(); $("settings-hint").textContent = store.syncKey() ? "Vinculado con el Mac" : ""; menu.showModal(); });
-$("menu-close").addEventListener("click", () => menu.close());
+$("menu-btn").addEventListener("click", () => { folders(); $("settings-hint").textContent = store.syncKey() ? "✓ Mac" : ""; menu.showModal(); });
+menu.addEventListener("click", e => { if (e.target === menu) menu.close(); });  // tocar fuera = cerrar
 $("folders").addEventListener("click", e => {
   const b = e.target.closest("button[data-cat]");
   if (!b) return;
