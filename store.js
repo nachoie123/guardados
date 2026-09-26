@@ -339,7 +339,8 @@ export async function syncNow(rules, onProgress = () => {}) {
   const k = syncKey();
   if (!k) return null;
   const ix = JSON.parse(new TextDecoder().decode(await unseal(k, await getBin("index.bin"))));
-  if (ix.gk) ls.set(ASK_KEY, ix.gk);  // clave de Gemini para "Preguntame" (viaja cifrada)
+  if (ix.gk) ls.set(ASK_KEY, ix.gk);  // claves de Gemini para "Preguntame" (viajan cifradas):
+  if (ix.gk2) ls.set(ASK_KEY + "2", ix.gk2);  // A gratis y B de pago
   let posts = 0, covers = 0;
   if (ix.posts && ix.posts !== ls.get(SYNC_POSTS)) {
     onProgress("datos", 0, 1);
@@ -399,9 +400,11 @@ Usa SOLO estos guardados. Cita cada uno que menciones con su id entre corchetes,
 Si pide ideas o proyectos, prioriza los de categoria Ideas y los que no estan hechos (st vacio).
 Si nada encaja, dilo y sugiere como buscarlo.`;
   // Flash-Lite primero; si su cupo diario se acaba (429), el otro modelo tiene el suyo
+  // clave A (gratis) primero; si su cupo se acaba (429), la B (de pago, prepago de 5 EUR/mes)
   let r;
-  for (const m of ["gemini-3.1-flash-lite", "gemini-3.8-flash"]) {
-    r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${encodeURIComponent(askKey())}`, {
+  for (const [k, m] of [[askKey(), "gemini-3.1-flash-lite"], [ls.get(ASK_KEY + "2"), "gemini-3.1-flash-lite"]]) {
+    if (!k) continue;
+    r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${encodeURIComponent(k)}`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.4, maxOutputTokens: 600 } }),
     });
