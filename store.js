@@ -318,7 +318,10 @@ export async function exportBackup() {
 // El Mac publica en sync/ paquetes cifrados (AES-GCM) con lo nuevo; la clave
 // llega una vez por el QR (#k=...) y se queda en este dispositivo. Aqui se baja
 // el indice, los datos si han cambiado y solo las portadas que falten.
-const SYNC_KEY = "guardados.sync", SYNC_POSTS = "guardados.sync.posts";
+// SYNC_POSTS lleva version: si el codigo cambia como importa (v2 = carpetas de Gemini y
+// sitios, 29/09/2026), se reimporta una vez aunque el paquete ya se hubiera bajado con el
+// codigo viejo (que lo ordeno a su manera y lo marco como hecho).
+const SYNC_KEY = "guardados.sync", SYNC_POSTS = "guardados.sync.posts.v2";
 const ls = {
   get: k => { try { return localStorage.getItem(k); } catch { return null; } },
   set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} },

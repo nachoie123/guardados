@@ -746,4 +746,9 @@ async function main() {
 }
 main().catch(() => { status.textContent = "No he podido cargar la app. Ábrela una vez con conexión."; });
 
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
+if ("serviceWorker" in navigator) {
+  // version nueva publicada: recargar ya, no a la segunda vez que se abre la app
+  const habia = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener("controllerchange", () => { if (habia) location.reload(); });
+  navigator.serviceWorker.register("sw.js").then(r => r.update()).catch(() => {});
+}
