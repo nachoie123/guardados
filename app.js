@@ -27,6 +27,7 @@ const CATS = {
   hogar: ["Hogar y DIY", "#65A30D", "#1A2E05"],
   motivacion: ["Motivación", "#CA8A04", "#2A1B02"],
   ideas: ["Ideas", "#F59E0B", "#7C2D12"],
+  todo: ["Todos los vídeos", "#57534E", "#1C1917"],
   otros: ["Otros", "#57534E", "#1C1917"],
   // carpetas por red social (search.js: cat "src:...")
   "src:instagram": ["Instagram", "#C13584", "#405DE6"],
@@ -129,7 +130,7 @@ function renderChips(hint = []) {
   for (const p of ix.posts) nsrc[srcOf(p)] = (nsrc[srcOf(p)] || 0) + 1;
   const srcChips = Object.keys(nsrc).length > 1 ? SRC.filter(c => nsrc[c]).map(c =>
     `<button class="chip" type="button" data-cat="${c}" aria-pressed="${cat === c}">${esc(label(c))} <span class="n">${nsrc[c]}</span></button>`) : [];
-  chips.innerHTML = [`<button class="chip" type="button" data-cat="" aria-pressed="${!cat}">Todo <span class="n">${ix.posts.length}</span></button>`, ...srcChips]
+  chips.innerHTML = [`<button class="chip" type="button" data-cat="todo" aria-pressed="${cat === "todo"}">Todo <span class="n">${ix.posts.length}</span></button>`, ...srcChips]
     .concat(order.map(c => `<button class="chip${hint.includes(norm(c)) ? " hint" : ""}" type="button" data-cat="${c}" aria-pressed="${cat === c}">${esc(label(c))} <span class="n">${counts[c]}</span></button>`))
     .join("");
 }
@@ -162,6 +163,30 @@ function pintarCarpetas(rs) {
     <h3>${r === "*" ? "Todos los vídeos" : esc(subLabel(r))}</h3></button></li>`).join("");
   hydrate(grid);
 }
+// inicio: una portada por carpeta (las mismas del menu), la mas grande primero
+function pintarInicio() {
+  const g = new Map([["todo", ix.posts]]);
+  for (const c of SRC) g.set(c, ix.posts.filter(p => srcOf(p) === c));
+  g.set("ideas", ix.posts.filter(p => p.cat.includes("ideas")));
+  const n = {};
+  for (const p of ix.posts) for (const c of p.cat) if (c !== "ideas") (n[c] ||= []).push(p);
+  Object.keys(n).sort((a, b) => (a === "otros") - (b === "otros") || n[b].length - n[a].length).forEach(c => g.set(c, n[c]));
+  // Todos y las redes, al final: lo primero son tus carpetas de verdad
+  const orden = [...g].filter(([c, ps]) => ps.length && !["todo", ...SRC].includes(c)).concat([...g].filter(([c]) => ["todo", ...SRC].includes(c)));
+  const used = new Set();
+  const portada = ps => { const p = ps.find(p => p.img && !used.has(p.id)) || ps.find(p => p.img) || ps[0]; used.add(p.id); return p; };
+  grid.innerHTML = orden.map(([c, ps]) => `<li><button class="card subcard" type="button" data-carpeta="${c}">
+    <div class="cover">${coverHTML(portada(ps))}<span class="sub-n">${fmt(ps.length)}</span></div>
+    <h3>${esc(label(c))}</h3></button></li>`).join("");
+  hydrate(grid);
+}
+grid.addEventListener("click", e => {
+  const b = e.target.closest("[data-carpeta]");
+  if (!b) return;
+  e.stopPropagation();
+  cat = b.dataset.carpeta; sub = null;
+  run(); scrollTo({ top: 0 });
+}, true);
 for (const el of [$("subs"), grid]) el.addEventListener("click", e => {
   const b = e.target.closest("[data-sub]");
   if (!b) return;
@@ -204,17 +229,21 @@ function run() {
   results = results.filter(({ p }) => { if (p.dup?.some(d => visto.has(d))) return false; visto.add(p.id); return true; });
   total = results.length; shown = 0;
   grid.innerHTML = "";
-  const enCarpetas = rs.length && !sub && !text;  // al entrar en una carpeta: sus subcarpetas con portada
+  const inicio = !cat && !text;  // pantalla de inicio: portadas de todas las carpetas
+  const enCarpetas = inicio || (rs.length && !sub && !text);  // al entrar en una carpeta: sus subcarpetas con portada
   grid.classList.toggle("carpetas", !!enCarpetas);
-  if (enCarpetas) pintarCarpetas(rs);
+  if (inicio) pintarInicio();
+  else if (enCarpetas) pintarCarpetas(rs);
   else if (!results.length) {
     grid.innerHTML = `<li class="empty">Nada por aquí. Prueba a decirlo de otra forma${cat || flt.size ? " o quita algún filtro" : ""}.</li>`;
   } else renderMore();
   $("folder").hidden = !cat;
   $("mapa-btn").hidden = cat !== "sitios";
+  $("tab-inicio").setAttribute("aria-current", String(inicio));
   $("folder-t").textContent = cat ? (sub && sub !== "*" ? subLabel(sub) : label(cat)) : "";
   q.placeholder = cat ? "Buscar aquí…" : "¿Qué necesitas?";
-  status.textContent = enCarpetas ? `${rs.length} subcarpetas · ${fmt(total)} vídeos`
+  status.textContent = inicio ? `${fmt(ix.posts.length)} guardados en ${grid.children.length} carpetas`
+    : enCarpetas ? `${rs.length} subcarpetas · ${fmt(total)} vídeos`
     : text ? `${total} ${total === 1 ? "resultado" : "resultados"}, los más útiles primero`
     : `${total} guardados, los más recientes primero`;
   renderChips(r.cats);
@@ -345,6 +374,13 @@ $("aj-close").addEventListener("click", () => aj.close());
 $("seg-cols").addEventListener("click", e => { const b = e.target.closest("[data-cols]"); if (b) { setCols(+b.dataset.cols); segCols(); } });
 // desde ajustes se abren importar o vincular: que no se apilen dos hojas
 document.addEventListener("click", e => { if (e.target.closest("[data-open-import],[data-open-mac]") && aj.open) aj.close(); }, true);
+
+// barra de abajo: Carpetas (inicio) y Mapa (todos los sitios, directo)
+$("tab-inicio").addEventListener("click", () => { cat = null; sub = null; q.value = ""; run(); scrollTo({ top: 0 }); });
+$("tab-mapa").addEventListener("click", () => {
+  if (cat !== "sitios") sub = null;  // desde fuera de Sitios: el mapa entero
+  abrirMapa();
+});
 
 // al bajar, la cabecera se hace pequena (buscador y botones mas bajos, sin la fila de carpetas)
 let compacta = false;

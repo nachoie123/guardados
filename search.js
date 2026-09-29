@@ -180,7 +180,7 @@ export function search(ix, q, { cat = null, limit = 60 } = {}) {
   for (const [ph, k] of ix.catPhrases) if (nq.includes(" " + ph + " ")) wantCats.add(k);
 
   // "src:instagram" / "src:tiktok": carpetas por red social, no por tema
-  const inCat = i => !cat || (cat.startsWith("src:") ? (ix.posts[i].src || "instagram") === cat.slice(4)
+  const inCat = i => !cat || cat === "todo" || (cat.startsWith("src:") ? (ix.posts[i].src || "instagram") === cat.slice(4)
     : ix.posts[i].cat.map(norm).includes(norm(cat)));
   if (!cs.length) {
     const all = ix.posts.map((p, i) => ({ p, i, score: 0 })).filter(r => inCat(r.i));
