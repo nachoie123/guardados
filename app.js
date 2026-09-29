@@ -57,14 +57,15 @@ const ICO = {
   automatizaciones: "⚙️", prompts: "💬", webs: "🌐", gadgets: "🔌", inversion: "💰", trading: "📊", dinero: "🪙",
   quant: "🧮", practicas: "💼", estudio: "📝", universidad: "🏫", outfits: "👔", cuidado: "🧴", entreno: "🏋️", salud: "❤️",
 };
-// una carpeta: icono de carpeta plano del color de la categoria (como Archivos del iPhone), nombre y
-// numero debajo; 3 por fila. Nada de capturas ni degradados: se distingue al momento de un video.
-function carpetaHTML(attr, clave, nombre, n, colorDe) {
+// una carpeta: forma de carpeta pequena (pestana + parte de atras del color de la categoria) con una
+// portada en la parte de delante; nombre y numero debajo; 3 por fila
+function carpetaHTML(attr, nombre, n, colorDe, p) {
   const [, c1] = CATS[colorDe] || CATS.otros;
   return `<li><button class="carpeta" type="button" ${attr} style="--c:${c1}">
-    <svg class="c-svg" viewBox="0 0 64 50" aria-hidden="true"><path class="c-atras" d="M2 7a5 5 0 0 1 5-5h15.5a4 4 0 0 1 2.9 1.2L30 8h27a5 5 0 0 1 5 5v2H2z"/><rect class="c-frente" x="2" y="12" width="60" height="36" rx="5"/></svg>
+    <span class="c-carp"><span class="c-frente">${p ? coverHTML(p) : ""}</span></span>
     <span class="c-nom">${esc(nombre)}</span><span class="c-n">${fmt(n)}</span></button></li>`;
 }
+const portadaDe = (ps, used) => { const p = ps.find(p => p.img && !used.has(p.id)) || ps.find(p => p.img) || ps[0]; if (p) used.add(p.id); return p; };
 const subLabel = r => SUBS[r.split("/")[1]] || r.split("/")[1];
 let sub = null;  // subcarpeta elegida dentro de la carpeta actual
 const SRC = ["src:instagram", "src:tiktok"];
@@ -176,9 +177,11 @@ function renderSubs(rs) {
 }
 function pintarCarpetas(rs) {
   const todos = ix.posts.filter(p => p.cat.includes(cat));
+  const used = new Set();
   grid.innerHTML = [["*", todos], ...rs].map(([r, ps]) => r === "*"
-    ? carpetaHTML(`data-sub="*"`, "todo", "Todos los vídeos", ps.length, cat)
-    : carpetaHTML(`data-sub="${r}"`, r.split("/")[1], subLabel(r), ps.length, cat)).join("");
+    ? carpetaHTML(`data-sub="*"`, "Todos los vídeos", ps.length, cat, portadaDe(ps, used))
+    : carpetaHTML(`data-sub="${r}"`, subLabel(r), ps.length, cat, portadaDe(ps, used))).join("");
+  hydrate(grid);
 }
 // inicio: una portada por carpeta (las mismas del menu), la mas grande primero
 function pintarInicio() {
@@ -190,7 +193,9 @@ function pintarInicio() {
   Object.keys(n).sort((a, b) => (a === "otros") - (b === "otros") || n[b].length - n[a].length).forEach(c => g.set(c, n[c]));
   // Todos y las redes, al final: lo primero son tus carpetas de verdad
   const orden = [...g].filter(([c, ps]) => ps.length && !["todo", ...SRC].includes(c)).concat([...g].filter(([c]) => ["todo", ...SRC].includes(c)));
-  grid.innerHTML = orden.map(([c, ps]) => carpetaHTML(`data-carpeta="${c}"`, c, label(c), ps.length, c)).join("");
+  const used = new Set();
+  grid.innerHTML = orden.map(([c, ps]) => carpetaHTML(`data-carpeta="${c}"`, label(c), ps.length, c, portadaDe(ps, used))).join("");
+  hydrate(grid);
 }
 grid.addEventListener("click", e => {
   const b = e.target.closest("[data-carpeta]");
@@ -483,6 +488,8 @@ async function abrirMapa(foco) {
     mapa = new maplibregl.Map({ container: "mapa", style: "https://tiles.openfreemap.org/styles/liberty",  // claro y con color, como Google/Apple Maps (Nacho: el oscuro no se veia)
       center: [-3.7038, 40.4168], zoom: 11.5, attributionControl: { compact: true }, pitchWithRotate: false });
     mapaListo = new Promise(r => mapa.on("load", r)).then(() => {
+      // sin edificios (Nacho: la sombra de los edificios molesta); solo calles, parques y agua
+      for (const l of mapa.getStyle().layers) if (/building/.test(l.id)) mapa.setLayoutProperty(l.id, "visibility", "none");
       // circulos grandes por zona (barrio) que se separan al acercarte; desde zoom 15, cada sitio suelto
       mapa.addSource("sitios", { type: "geojson", data: { type: "FeatureCollection", features: [] },
         cluster: true, clusterRadius: 30, clusterMaxZoom: 14 });  // pequeno: el centro se reparte en varios
@@ -975,5 +982,5 @@ if ("serviceWorker" in navigator) {
   // version nueva publicada: recargar ya, no a la segunda vez que se abre la app
   const habia = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.addEventListener("controllerchange", () => { if (habia) location.reload(); });
-  navigator.serviceWorker.register("sw.js").then(r => r.update()).catch(() => {});
+  navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(r => r.update()).catch(() => {});
 }

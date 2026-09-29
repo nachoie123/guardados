@@ -1,7 +1,7 @@
 // Sin conexion: la app y la muestra se guardan al abrirla; las portadas de la
 // muestra, segun se ven. Los guardados de cada uno no pasan por aqui: viven en
 // IndexedDB (store.js). Todo va "red primero": con conexion, la ultima version.
-const SHELL = "shell-v29";
+const SHELL = "shell-v30";
 const FILES = ["./", "index.html", "app.css", "app.js", "search.js", "rules.js", "store.js",
   "rules-data.json", "bookmarklet.js", "bookmarklet-tiktok.js", "demo/posts.json", "manifest.webmanifest", "vendor/jsQR.js", "vendor/maplibre-gl.js", "vendor/maplibre-gl.css",
   "icons/icon-192.png", "icons/icon-512.png", "icons/icon-180.png"];
@@ -31,7 +31,8 @@ self.addEventListener("fetch", e => {
     return;
   }
 
-  e.respondWith(fetch(e.request).then(res => {
+  // "no-cache": pregunta siempre al servidor (GitHub Pages cachea 10 min y el movil se quedaba con la vieja)
+  e.respondWith(fetch(e.request, { cache: "no-cache" }).then(res => {
     if (res.ok) { const copy = res.clone(); caches.open(SHELL).then(c => c.put(e.request, copy)); }
     return res;
   }).catch(() => caches.match(e.request, { ignoreSearch: true })));
