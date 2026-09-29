@@ -432,3 +432,5 @@ main { padding: 8px 16px calc(var(--safe-b) + 84px); max-width: 1100px; margin: 
 .c-ico { align-self: start; font-size: 40px; line-height: 1; filter: drop-shadow(0 2px 4px rgb(0 0 0 / .3)); }
 .c-nom { font-size: 17px; font-weight: 800; line-height: 1.15; text-shadow: 0 1px 3px rgb(0 0 0 / .3); }
 .c-n { font-size: 13px; opacity: .85; font-weight: 600; margin-top: 2px; }
+/* el mapa es claro (estilo Google/Apple): lista, tarjeta y botones en claro tambien, aunque el movil este en oscuro */
+.mapa-dlg { --surface: #FFFFFF; --surface-2: #F0EFED; --text: #1C1917; --muted: #57534E; --border: #E7E5E4; color-scheme: light; }

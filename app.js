@@ -472,53 +472,36 @@ function sitiosGeo() {
   }
   return { type: "FeatureCollection", features: [...vistos.values()].map(v => v.feat) };
 }
-// grupos fijos: solo se juntan sitios a menos de 100 m entre si, sin importar el zoom
-// (Nacho, 29/09/2026: el agrupado por pixeles juntaba restaurantes a kilometros al alejar)
-let grupos = new Map();
-function agrupar(geo) {
-  const g = [];  // {c: [lng, lat], fs: [...]}
-  for (const f of geo.features) {
-    const c = f.geometry.coordinates;
-    const cerca = g.find(x => km(x.c, c) < 0.1);
-    if (cerca) { cerca.fs.push(f); const n = cerca.fs.length; cerca.c = [(cerca.c[0] * (n - 1) + c[0]) / n, (cerca.c[1] * (n - 1) + c[1]) / n]; }
-    else g.push({ c: [...c], fs: [f] });
-  }
-  grupos = new Map();
-  return { type: "FeatureCollection", features: g.map((x, k) => {
-    if (x.fs.length === 1) return x.fs[0];
-    grupos.set(k, x.fs);
-    return { type: "Feature", geometry: { type: "Point", coordinates: x.c }, properties: { grupo: k, count: x.fs.length } };
-  }) };
-}
 async function abrirMapa(foco) {
   $("mapa-t").textContent = sub && sub !== "*" && cat === "sitios" ? subLabel(sub) : "Sitios";
   $("mapa-card").hidden = true;
+  estadoHoja("baja");
   if (!mapaDlg.open) { mapaDlg.showModal(); history.pushState({ mapa: 1 }, "", location.pathname + location.search); }
   await cargarMapLibre();
   if (!mapa) {
-    mapa = new maplibregl.Map({ container: "mapa", style: `https://tiles.openfreemap.org/styles/${oscuro() ? "dark" : "liberty"}`,
+    mapa = new maplibregl.Map({ container: "mapa", style: "https://tiles.openfreemap.org/styles/liberty",  // claro y con color, como Google/Apple Maps (Nacho: el oscuro no se veia)
       center: [-3.7038, 40.4168], zoom: 11.5, attributionControl: { compact: true }, pitchWithRotate: false });
     mapaListo = new Promise(r => mapa.on("load", r)).then(() => {
-      mapa.addSource("sitios", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-      mapa.addLayer({ id: "grupos", type: "circle", source: "sitios", filter: ["has", "count"], paint: {
-        "circle-color": "#F97316", "circle-stroke-color": "#fff", "circle-stroke-width": 3,
-        "circle-radius": ["step", ["get", "count"], 13, 4, 15, 8, 18] } });
-      mapa.addLayer({ id: "grupos-n", type: "symbol", source: "sitios", filter: ["has", "count"],
-        layout: { "text-field": ["to-string", ["get", "count"]], "text-font": ["Noto Sans Bold"], "text-size": 13, "text-allow-overlap": true },
+      // circulos grandes por zona (barrio) que se separan al acercarte; desde zoom 15, cada sitio suelto
+      mapa.addSource("sitios", { type: "geojson", data: { type: "FeatureCollection", features: [] },
+        cluster: true, clusterRadius: 48, clusterMaxZoom: 14 });
+      mapa.addLayer({ id: "grupos", type: "circle", source: "sitios", filter: ["has", "point_count"], paint: {
+        "circle-color": "#F97316", "circle-opacity": 0.92, "circle-stroke-color": "#fff", "circle-stroke-width": 3,
+        "circle-radius": ["step", ["get", "point_count"], 20, 5, 26, 15, 32, 40, 40] } });
+      mapa.addLayer({ id: "grupos-n", type: "symbol", source: "sitios", filter: ["has", "point_count"],
+        layout: { "text-field": ["get", "point_count_abbreviated"], "text-font": ["Noto Sans Bold"], "text-size": 15, "text-allow-overlap": true },
         paint: { "text-color": "#fff" } });
-      mapa.addLayer({ id: "puntos", type: "circle", source: "sitios", filter: ["!", ["has", "count"]], paint: {
-        "circle-color": ["get", "color"], "circle-radius": ["interpolate", ["linear"], ["zoom"], 9, 5, 13, 8, 16, 9],
-        "circle-stroke-color": "#fff", "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 9, 1.5, 13, 3] } });
-      mapa.addLayer({ id: "nombres", type: "symbol", source: "sitios", filter: ["!", ["has", "count"]],
+      mapa.addLayer({ id: "puntos", type: "circle", source: "sitios", filter: ["!", ["has", "point_count"]], paint: {
+        "circle-color": ["get", "color"], "circle-radius": 10, "circle-stroke-color": "#fff", "circle-stroke-width": 3 } });
+      mapa.addLayer({ id: "nombres", type: "symbol", source: "sitios", filter: ["!", ["has", "point_count"]],
         layout: { "text-field": ["get", "n"], "text-font": ["Noto Sans Bold"], "text-size": 12.5, "text-offset": [0, 1.1],
           "text-anchor": "top", "text-max-width": 9, "text-optional": true },
-        paint: { "text-color": oscuro() ? "#fff" : "#1c1917", "text-halo-color": oscuro() ? "#000" : "#fff", "text-halo-width": 1.6 } });
-      // un grupo (sitios a <100 m): la lista con solo esos
-      mapa.on("click", "grupos", e => {
+        paint: { "text-color": "#1c1917", "text-halo-color": "#fff", "text-halo-width": 2 } });
+      // tocar un circulo: acercarse a esa zona hasta que se separen
+      mapa.on("click", "grupos", async e => {
         const f = e.features[0];
-        soloGrupo = grupos.get(f.properties.grupo) || null;
-        mapa.easeTo({ center: f.geometry.coordinates, zoom: Math.max(mapa.getZoom(), 16) });
-        estadoHoja("alta");
+        const z = await mapa.getSource("sitios").getClusterExpansionZoom(f.properties.cluster_id);
+        mapa.easeTo({ center: f.geometry.coordinates, zoom: z + 0.4 });
       });
       mapa.on("click", "puntos", e => tarjeta(e.features[0].properties));
       mapa.on("click", e => {
@@ -535,9 +518,9 @@ async function abrirMapa(foco) {
   await mapaListo;
   mapa.resize();
   const geo = geoActual = sitiosGeo();
-  mapa.getSource("sitios").setData(agrupar(geo));
-  estadoHoja("baja");
+  mapa.getSource("sitios").setData(geo);
   hoja.hidden = !!foco;
+  if (hoja.dataset.estado === "alta") pintarLista();  // la abrio mientras cargaba
   $("hoja-sub").textContent = `${fmt(geo.features.length)} sitios`;
   if (foco) {
     mapa.jumpTo({ center: [foco.lng, foco.lat], zoom: 16.5 });
