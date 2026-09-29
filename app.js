@@ -61,6 +61,9 @@ const esc = s => s.replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "
 
 function coverHTML(p) {
   if (p.img && !mine) return `<img src="demo/covers/${p.id}.jpg" alt="" loading="lazy" decoding="async">`;
+  // videos de Sitios: de portada, la foto del sitio (sin gente) en vez del fotograma con alguien hablando
+  const sitio = mine && p.cat.includes("sitios") && p.lug?.find(l => l.f);
+  if (sitio) return `<img data-cover="${sitio.f}" alt="" decoding="async">`;
   if (p.img) return `<img data-cover="${p.id}" alt="" decoding="async">`;
   const [, c1, c2] = CATS[p.cat[0]] || CATS.otros;
   return `<div class="ph" style="--c1:${c1};--c2:${c2}">${esc(label(p.cat[0]))}</div>`;
