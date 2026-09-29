@@ -1,9 +1,9 @@
 // Sin conexion: la app y la muestra se guardan al abrirla; las portadas de la
 // muestra, segun se ven. Los guardados de cada uno no pasan por aqui: viven en
 // IndexedDB (store.js). Todo va "red primero": con conexion, la ultima version.
-const SHELL = "shell-v18";
+const SHELL = "shell-v20";
 const FILES = ["./", "index.html", "app.css", "app.js", "search.js", "rules.js", "store.js",
-  "rules-data.json", "bookmarklet.js", "bookmarklet-tiktok.js", "demo/posts.json", "manifest.webmanifest", "vendor/jsQR.js",
+  "rules-data.json", "bookmarklet.js", "bookmarklet-tiktok.js", "demo/posts.json", "manifest.webmanifest", "vendor/jsQR.js", "vendor/leaflet.js", "vendor/leaflet.css", "vendor/leaflet.markercluster.js", "vendor/MarkerCluster.css", "vendor/MarkerCluster.Default.css",
   "icons/icon-192.png", "icons/icon-512.png", "icons/icon-180.png"];
 
 self.addEventListener("install", e => {

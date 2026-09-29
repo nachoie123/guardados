@@ -99,7 +99,8 @@ export function parseFile(json) {
         video: !!p.v, plays: p.p || 0, tr: p.tr || "", kw: p.kw || "",
         src: p.src || "instagram", url: p.url || null,
         ideas: (p.cat || []).includes("ideas"),
-        dur: p.dur || 0, que: p.que || "", dup: p.dup || [],  // carpeta Ideas: la decide el Mac (ideas.py), no rules.js
+        dur: p.dur || 0, que: p.que || "", dup: p.dup || [],
+        cat: p.cat || null, sub: p.sub || [], ciudad: p.ciudad || "", lug: p.lug || null,  // carpetas de Gemini (carpetas.py)  // carpeta Ideas: la decide el Mac (ideas.py), no rules.js
         // mis-guardados.json (export.py --mio) trae la portada dentro, en base64
         thumb: p.cov || null,
       })),
@@ -233,7 +234,11 @@ export async function importItems(parsed, rules, onProgress = () => {}, thumbs =
     // el export oficial no trae caption: no pisar uno que ya teniamos
     const caption = i.caption || prev?.c || "";
     const tr = i.tr || prev?.tr || "", kw = i.kw || prev?.kw || "";
-    const { display, cats } = rules.label(caption, tr, i.user || prev?.u || "");
+    let { display, cats } = rules.label(caption, tr, i.user || prev?.u || "");
+    // si el Mac ya lo clasifico con Gemini, manda eso; las reglas solo para lo importado a mano
+    const mac = i.cat?.filter(c => c !== "ideas");
+    if (mac?.length) cats = [...mac];
+    else if (prev?.sub?.length) cats = prev.cat.filter(c => c !== "ideas");
     if (i.ideas ?? prev?.cat?.includes("ideas")) cats.push("ideas");
     return {
       id: i.code, t: display,
@@ -243,7 +248,10 @@ export async function importItems(parsed, rules, onProgress = () => {}, thumbs =
       url: i.url || prev?.url || `https://www.instagram.com/p/${i.code}/`,
       img: !!prev?.img, _thumb: i.thumb,
       dur: i.dur || prev?.dur || 0, que: i.que || prev?.que || "",
-      dup: i.dup ?? prev?.dup ?? [],  // el mismo clip guardado desde otra cuenta (export.py)
+      dup: i.dup ?? prev?.dup ?? [],
+      // sitios del mapa: si Nacho los toco en el movil (lugMio), no los pisa el Mac
+      lug: prev?.lugMio ? prev.lug : (i.lug ?? prev?.lug ?? []), lugMio: !!prev?.lugMio,
+      sub: i.sub?.length ? i.sub : (i.cat ? [] : prev?.sub || []), ciudad: i.ciudad || (i.cat ? "" : prev?.ciudad || ""),  // el mismo clip guardado desde otra cuenta (export.py)
       // estado de la idea (pendiente / haciendo / hecha): solo vive en este movil, no lo pisa el Mac
       st: prev?.st || "", repo: prev?.repo || "",
     };
@@ -402,16 +410,60 @@ Si pide ideas o proyectos, prioriza los de categoria Ideas y los que no estan he
 Si nada encaja, dilo y sugiere como buscarlo.`;
   // Flash-Lite primero; si su cupo diario se acaba (429), el otro modelo tiene el suyo
   // clave A (gratis) primero; si su cupo se acaba (429), la B (de pago, prepago de 5 EUR/mes)
+  return (await gemini(prompt, { temperature: 0.4, maxOutputTokens: 600 })) || "No he sabido responder.";
+}
+
+async function gemini(prompt, config) {
   let r;
-  for (const [k, m] of [[askKey(), "gemini-3.1-flash-lite"], [ls.get(ASK_KEY + "2"), "gemini-3.1-flash-lite"]]) {
+  for (const k of [askKey(), ls.get(ASK_KEY + "2")]) {
     if (!k) continue;
-    r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${encodeURIComponent(k)}`, {
+    r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${encodeURIComponent(k)}`, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.4, maxOutputTokens: 600 } }),
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: config }),
     });
     if (r.status !== 429 && r.status !== 503) break;
   }
+  if (!r) throw new Error("sin clave");
   if (!r.ok) throw new Error("gemini " + r.status);
   const d = await r.json();
-  return ((d.candidates?.[0]?.content?.parts) || []).map(p => p.text || "").join("").trim() || "No he sabido responder.";
+  return ((d.candidates?.[0]?.content?.parts) || []).map(p => p.text || "").join("").trim();
+}
+
+// --- sitios del mapa, tocados desde el movil (borrar / anadir / volver a investigar) ---
+// El Mac los saca con Apple Maps (sitios.py); aqui, sin Mac, con el buscador de
+// OpenStreetMap (Nominatim: gratis, 1 busqueda por segundo). lugMio = no lo pisa el Mac.
+export async function setLugares(id, lug) {
+  const d = await db();
+  const tx = d.transaction("posts", "readwrite");
+  const row = await req(tx.objectStore("posts").get(id));
+  if (row) tx.objectStore("posts").put({ ...row, lug, lugMio: true });
+  await done(tx);
+}
+let ultimaBusqueda = 0;
+export async function buscarSitio(q, tipo = "planes") {
+  const espera = 1100 - (Date.now() - ultimaBusqueda);
+  if (espera > 0) await new Promise(r => setTimeout(r, espera));
+  ultimaBusqueda = Date.now();
+  const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&addressdetails=1&accept-language=es&q=${encodeURIComponent(q)}`);
+  const [h] = r.ok ? await r.json() : [];
+  if (!h) return null;
+  const a = h.address || {};
+  return { n: h.name || q.split(",")[0], t: tipo, ci: a.city || a.town || a.village || "",
+    lat: +(+h.lat).toFixed(6), lng: +(+h.lon).toFixed(6),
+    a: [a.road, a.house_number].filter(Boolean).join(" ") };
+}
+export async function investigarSitios(p) {
+  const txt = await gemini(`Saca TODOS los lugares concretos que se pueden visitar de este video (restaurantes, bares,
+cafeterias, hoteles, museos, tiendas, playas...). El nombre puede ir tras 📍 o como @cuenta del local.
+No inventes; un sitio sin nombre no vale. Devuelve SOLO JSON: {"lugares":[{"nombre":"","ciudad":"","pais":"",
+"tipo":"restaurantes|bares|cafes|hoteles|museos|planes|naturaleza|tiendas"}]}
+Titulo: ${p.t}\nDescripcion: ${(p.c || "").slice(0, 1500)}\nTranscripcion: ${(p.tr || "").slice(0, 2500)}`,
+    { temperature: 0.1, maxOutputTokens: 1500, responseMimeType: "application/json" });
+  const ls = JSON.parse(txt || "{}").lugares || [];
+  const out = [];
+  for (const l of ls) {
+    const h = await buscarSitio([l.nombre, l.ciudad, l.pais].filter(Boolean).join(", "), l.tipo);
+    if (h) out.push({ ...h, n: l.nombre });
+  }
+  return out;
 }

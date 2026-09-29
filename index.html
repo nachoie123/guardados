@@ -13,6 +13,9 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="vendor/leaflet.css">
+<link rel="stylesheet" href="vendor/MarkerCluster.css">
+<link rel="stylesheet" href="vendor/MarkerCluster.Default.css">
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
@@ -47,6 +50,7 @@
     </button>
     <h1 id="folder-t"></h1>
   </div>
+  <div class="filters subs" id="subs" role="group" aria-label="Subcarpetas" hidden></div>
   <div class="filters" id="filters" role="group" aria-label="Filtros rápidos"></div>
   <button type="button" class="ask-btn" id="ask-btn" hidden></button>
   <section class="answer" id="answer" hidden aria-live="polite">
@@ -55,6 +59,12 @@
     <div class="memo-row" id="answer-refs"></div>
   </section>
   <p class="status" id="status" aria-live="polite">Cargando tus guardados…</p>
+  <div class="seg vista" id="vista" role="group" aria-label="Ver como" hidden>
+    <button type="button" data-v="lista" aria-pressed="true">Lista</button><button type="button" data-v="mapa" aria-pressed="false">Mapa</button>
+  </div>
+  <div class="mapa" id="mapa" hidden>
+    <button type="button" class="cerca" id="cerca">📍 Cerca de mí</button>
+  </div>
   <ul class="grid" id="grid"></ul>
   <div id="more" aria-hidden="true"></div>
   <footer class="foot" id="foot" hidden>
@@ -86,6 +96,16 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" class="fill"/></svg>
         <span id="d-open-txt">Abrir en Instagram</span>
       </a>
+      <section class="d-lug" id="d-lug" hidden>
+        <h3>Sitios</h3>
+        <ul id="d-lug-list"></ul>
+        <form id="d-lug-add" class="d-lug-add">
+          <input type="search" name="q" placeholder="Añadir sitio: «Casa Pepe Chamberí»" autocomplete="off" enterkeyhint="search">
+          <button type="submit" class="btn-mini">Añadir</button>
+        </form>
+        <button type="button" class="link" id="d-lug-inv">Volver a investigar el vídeo</button>
+        <p class="d-lug-msg" id="d-lug-msg" hidden></p>
+      </section>
       <p class="d-cap" id="d-cap"></p>
     </div>
   </div>
@@ -203,6 +223,8 @@
   </div>
 </dialog>
 
+<script src="vendor/leaflet.js" defer></script>
+<script src="vendor/leaflet.markercluster.js" defer></script>
 <script type="module" src="app.js"></script>
 </body>
 </html>
