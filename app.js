@@ -57,13 +57,12 @@ const ICO = {
   automatizaciones: "⚙️", prompts: "💬", webs: "🌐", gadgets: "🔌", inversion: "💰", trading: "📊", dinero: "🪙",
   quant: "🧮", practicas: "💼", estudio: "📝", universidad: "🏫", outfits: "👔", cuidado: "🧴", entreno: "🏋️", salud: "❤️",
 };
-// una carpeta: forma de carpeta pequena (pestana + parte de atras del color de la categoria) con una
-// portada en la parte de delante; nombre y numero debajo; 3 por fila
+// una carpeta, como las colecciones de Instagram: portada cuadrada a sangre, nombre y numero debajo
 function carpetaHTML(attr, nombre, n, colorDe, p) {
-  const [, c1] = CATS[colorDe] || CATS.otros;
-  return `<li><button class="carpeta" type="button" ${attr} style="--c:${c1}">
-    <span class="c-carp"><span class="c-frente">${p ? `<span class="c-foto">${coverHTML(p)}</span>` : ""}</span></span>
-    <span class="c-nom">${esc(nombre)}</span><span class="c-n">${fmt(n)}</span></button></li>`;
+  const [, c1, c2] = CATS[colorDe] || CATS.otros;
+  return `<li><button class="carpeta" type="button" ${attr}>
+    <span class="c-portada" style="--c1:${c1};--c2:${c2}">${p ? coverHTML(p) : ""}</span>
+    <span class="c-nom">${esc(nombre)}</span><span class="c-n">${fmt(n)} ${n === 1 ? "vídeo" : "vídeos"}</span></button></li>`;
 }
 const portadaDe = (ps, used) => { const p = ps.find(p => p.img && !used.has(p.id)) || ps.find(p => p.img) || ps[0]; if (p) used.add(p.id); return p; };
 const subLabel = r => SUBS[r.split("/")[1]] || r.split("/")[1];
