@@ -335,28 +335,47 @@ main { padding: 8px 16px calc(var(--safe-b) + 24px); max-width: 1100px; margin: 
 .cover .st.hecha { background: #16A34A; color: #fff; }
 .answer { scroll-margin-top: 170px; }
 
-/* --- Sitios: lista / mapa --- */
-.vista { grid-template-columns: 1fr 1fr; margin: 10px 0 0; }
-.mapa { position: relative; height: calc(100dvh - 230px); min-height: 360px; margin: 12px -16px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); background: var(--surface-2); z-index: 0; }
-@media (prefers-color-scheme: dark) {
-  .teselas { filter: invert(1) hue-rotate(180deg) brightness(.9) contrast(.9) saturate(.6); }
-}
-:root[data-theme="dark"] .teselas { filter: invert(1) hue-rotate(180deg) brightness(.9) contrast(.9) saturate(.6); }
-.cerca { position: absolute; z-index: 500; right: 12px; bottom: 24px; min-height: 40px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--surface); color: var(--text); font: inherit; font-weight: 600; box-shadow: 0 2px 10px rgb(0 0 0 / .3); }
-.pin { display: grid; place-items: center; }
-.pin span { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: var(--accent); box-shadow: 0 2px 6px rgb(0 0 0 / .35); }
-.pin span { font-size: 16px; line-height: 1; }
-.pin span > i { transform: rotate(45deg); font-style: normal; }
-.marker-cluster div { background: var(--accent) !important; color: #fff; font-weight: 700; }
-.marker-cluster { background: rgb(251 146 60 / .35) !important; }
-.leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--surface); color: var(--text); }
-.leaflet-popup-content { margin: 10px; font: 13px/1.35 system-ui, sans-serif; }
-.pop { display: grid; grid-template-columns: 64px 1fr; gap: 10px; align-items: start; }
-.pop-cover { padding: 0; border: 0; background: none; }
-.pop-cover .cover { width: 64px; aspect-ratio: 9/16; border-radius: 8px; overflow: hidden; }
-.pop-cover img, .pop-cover .ph { width: 100%; height: 100%; object-fit: cover; font-size: 9px; }
-.pop p { margin: 6px 0 0; display: flex; gap: 10px; }
-.pop .link, .pop a.link { min-height: 0; padding: 0; font-size: 13px; color: var(--accent); }
+/* --- Sitios: mapa a pantalla completa (MapLibre) --- */
+.mapa-btn { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--accent); color: var(--on-accent, #fff); font: inherit; font-size: 15px; font-weight: 700; }
+.mapa-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; }
+.mapa-dlg { position: fixed; inset: 0; width: 100vw; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; background: var(--bg); }
+.mapa-dlg::backdrop { background: var(--bg); }
+.mapa { position: absolute; inset: 0; }
+.mapa-volver { position: absolute; z-index: 2; top: calc(var(--safe-t) + 12px); left: 12px; display: flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 16px 0 10px; border: 0; border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); color: var(--text); font: inherit; font-size: 16px; font-weight: 700; box-shadow: 0 2px 12px rgb(0 0 0 / .25); }
+.mapa-volver svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.mapa-yo { position: absolute; z-index: 2; top: calc(var(--safe-t) + 12px); right: 12px; width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 50%;
+  background: color-mix(in srgb, var(--surface) 88%, transparent); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); color: #0A84FF; box-shadow: 0 2px 12px rgb(0 0 0 / .25); }
+.mapa-yo svg { width: 20px; height: 20px; fill: currentColor; }
+.mapa-yo.buscando { animation: pulse 1s ease-in-out infinite; }
+.yo { width: 18px; height: 18px; border-radius: 50%; background: #0A84FF; border: 3px solid #fff; box-shadow: 0 0 0 8px rgb(10 132 255 / .2), 0 1px 4px rgb(0 0 0 / .3); }
+.mapa-card { position: absolute; z-index: 2; left: 12px; right: 12px; bottom: calc(env(safe-area-inset-bottom) + 14px); display: grid; grid-template-columns: 88px 1fr; gap: 12px; padding: 12px;
+  border-radius: 20px; background: color-mix(in srgb, var(--surface) 94%, transparent); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); box-shadow: 0 6px 30px rgb(0 0 0 / .3); }
+.mc-foto { width: 88px; height: 88px; border-radius: 14px; overflow: hidden; background: var(--surface-2); }
+.mc-foto img { width: 100%; height: 100%; object-fit: cover; }
+.mc-ico { display: grid; place-items: center; width: 100%; height: 100%; font-size: 40px; background: color-mix(in srgb, var(--c) 30%, var(--surface-2)); }
+.mc-txt { display: grid; align-content: start; gap: 2px; min-width: 0; }
+.mc-txt b { font-size: 17px; line-height: 1.2; }
+.mc-txt small { color: var(--muted); font-size: 13px; }
+.mc-dir { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mc-bot { display: flex; gap: 8px; margin-top: 8px; }
+.mc-ir, .mc-video { flex: 1; min-height: 38px; display: grid; place-items: center; border-radius: 12px; border: 0; font: inherit; font-size: 14px; font-weight: 700; text-decoration: none; }
+.mc-ir { background: #0A84FF; color: #fff; }
+.mc-video { background: var(--surface-2); color: var(--text); }
+.maplibregl-ctrl-attrib { font-size: 10px; }
+/* subcarpetas como portadas */
+.subcard .cover { position: relative; }
+.sub-n { position: absolute; right: 8px; bottom: 8px; padding: 2px 8px; border-radius: 999px; background: rgb(0 0 0 / .6); color: #fff; font-size: 12px; font-weight: 700; }
+.grid.carpetas .subcard h3 { font-size: 15px; -webkit-line-clamp: 1; }
+/* cabecera compacta al bajar */
+.top { transition: padding .2s ease-out; }
+.top .search, .top .search input, .top .mic, .top .menu { transition: all .2s ease-out; }
+.top .chips { transition: max-height .2s ease-out, opacity .15s ease-out; max-height: 48px; }
+.top.compact { padding-top: calc(var(--safe-t) + 6px); padding-bottom: 6px; row-gap: 0; }
+.top.compact .search { min-height: 38px; }
+.top.compact .search input { height: 38px; font-size: 16px; }
+.top.compact .mic, .top.compact .menu { width: 38px; height: 38px; }
+.top.compact .chips { max-height: 0; opacity: 0; overflow: hidden; pointer-events: none; padding-block: 0; }
 .aprox { color: var(--muted); font-weight: 500; }
 /* ficha: sitios del video */
 .d-lug { margin: 4px 0 18px; }

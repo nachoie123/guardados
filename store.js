@@ -390,6 +390,22 @@ export async function syncNow(rules, onProgress = () => {}) {
     }
     if (batch.length) await flush();
   }
+  // fotos de los sitios del mapa: van al mismo almacen de portadas, con id "<code>~<n>"
+  if (ix.fotos?.length) {
+    const tengo = new Set(await req(d.transaction("covers").objectStore("covers").getAllKeys()));
+    for (const p of ix.fotos.filter(p => p.ids.some(id => !tengo.has(id)))) {
+      const b = await unseal(k, await getBin(p.f));
+      const len = new DataView(b.buffer, b.byteOffset).getUint32(0);
+      let off = 4 + len;
+      const tx = d.transaction("covers", "readwrite");
+      for (const [id, size] of JSON.parse(new TextDecoder().decode(b.subarray(4, 4 + len)))) {
+        if (!tengo.has(id)) tx.objectStore("covers").put(b.slice(off, off + size).buffer, id);
+        off += size;
+      }
+      await done(tx);
+      await breathe();
+    }
+  }
   return posts || covers ? { posts, covers } : null;
 }
 

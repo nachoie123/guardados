@@ -13,9 +13,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="vendor/leaflet.css">
-<link rel="stylesheet" href="vendor/MarkerCluster.css">
-<link rel="stylesheet" href="vendor/MarkerCluster.Default.css">
+<link rel="stylesheet" href="vendor/maplibre-gl.css">
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
@@ -49,6 +47,9 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
     </button>
     <h1 id="folder-t"></h1>
+    <button type="button" class="mapa-btn" id="mapa-btn" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4 3 6.5v13.5l6-2.5 6 2.5 6-2.5V4l-6 2.5z"/><path d="M9 4v13.5M15 6.5V20"/></svg>Mapa
+    </button>
   </div>
   <div class="filters subs" id="subs" role="group" aria-label="Subcarpetas" hidden></div>
   <div class="filters" id="filters" role="group" aria-label="Filtros rápidos"></div>
@@ -59,12 +60,6 @@
     <div class="memo-row" id="answer-refs"></div>
   </section>
   <p class="status" id="status" aria-live="polite">Cargando tus guardados…</p>
-  <div class="seg vista" id="vista" role="group" aria-label="Ver como" hidden>
-    <button type="button" data-v="lista" aria-pressed="true">Lista</button><button type="button" data-v="mapa" aria-pressed="false">Mapa</button>
-  </div>
-  <div class="mapa" id="mapa" hidden>
-    <button type="button" class="cerca" id="cerca">📍 Cerca de mí</button>
-  </div>
   <ul class="grid" id="grid"></ul>
   <div id="more" aria-hidden="true"></div>
   <footer class="foot" id="foot" hidden>
@@ -109,6 +104,17 @@
       <p class="d-cap" id="d-cap"></p>
     </div>
   </div>
+</dialog>
+
+<dialog class="mapa-dlg" id="mapa-dlg" aria-label="Mapa de sitios">
+  <div class="mapa" id="mapa"></div>
+  <button type="button" class="mapa-volver" id="mapa-volver" aria-label="Volver">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg><span id="mapa-t">Sitios</span>
+  </button>
+  <button type="button" class="mapa-yo" id="mapa-yo" aria-label="Dónde estoy">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 3 3 10.5l7.5 2.9L13.5 21z"/></svg>
+  </button>
+  <div class="mapa-card" id="mapa-card" hidden></div>
 </dialog>
 
 <dialog class="drawer" id="menu" aria-label="Carpetas y ajustes">
@@ -223,8 +229,6 @@
   </div>
 </dialog>
 
-<script src="vendor/leaflet.js" defer></script>
-<script src="vendor/leaflet.markercluster.js" defer></script>
 <script type="module" src="app.js"></script>
 </body>
 </html>

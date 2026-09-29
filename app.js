@@ -132,32 +132,44 @@ function renderChips(hint = []) {
 }
 
 // --- filtros rapidos (y, dentro de Ideas, por estado) ---
-const FLT = {
-  largos: ["Largos (+1 min)", p => p.dur >= 60],
-  voz: ["Con voz", p => (p.tr || "").length > 40],
-  vistos: ["Más vistos", null],  // no filtra: ordena
-  mes: ["Del último mes", p => p.d && Date.now() / 1000 - p.d < 31 * 86400],
-};
+const FLT = {};  // los filtros rapidos (largos, voz, vistos, mes) los quito Nacho el 29/09/2026
 const ST = { pend: ["Pendientes", p => !p.st], haciendo: ["Haciéndolas", p => p.st === "haciendo"], hecha: ["Hechas", p => p.st === "hecha"] };
 const flt = new Set();
-function renderSubs() {
-  const n = {};
-  if (cat) for (const p of ix.posts) if (p.cat.includes(cat)) for (const r of p.sub || []) if (r.startsWith(cat + "/")) n[r] = (n[r] || 0) + 1;
-  const rs = Object.keys(n).sort((a, b) => n[b] - n[a]);
-  if (sub && !n[sub]) sub = null;
-  $("subs").hidden = !rs.length;
-  $("subs").innerHTML = rs.length ? `<button type="button" data-sub="" aria-pressed="${!sub}">Todas</button>` + rs.map(r =>
-    `<button type="button" data-sub="${r}" aria-pressed="${sub === r}">${esc(subLabel(r))} <small>${fmt(n[r])}</small></button>`).join("") : "";
+// sub: null = portadas de las subcarpetas; "*" = todos los videos de la carpeta; "sitios/bares" = una
+function subsDe(c) {
+  const n = new Map();
+  if (c) for (const p of ix.posts) if (p.cat.includes(c)) for (const r of p.sub || []) if (r.startsWith(c + "/")) {
+    if (!n.has(r)) n.set(r, []);
+    n.get(r).push(p);
+  }
+  return [...n].sort((a, b) => b[1].length - a[1].length);
 }
-$("subs").addEventListener("click", e => {
+function renderSubs(rs) {
+  if (sub && sub !== "*" && !rs.some(([r]) => r === sub)) sub = null;
+  $("subs").hidden = !rs.length || !sub;
+  $("subs").innerHTML = rs.length && sub ? `<button type="button" data-sub="*" aria-pressed="${sub === "*"}">Todos</button>` + rs.map(([r, ps]) =>
+    `<button type="button" data-sub="${r}" aria-pressed="${sub === r}">${esc(subLabel(r))} <small>${fmt(ps.length)}</small></button>`).join("") : "";
+}
+function pintarCarpetas(rs) {
+  const todos = ix.posts.filter(p => p.cat.includes(cat));
+  const used = new Set();
+  const portada = ps => { const p = ps.find(p => p.img && !used.has(p.id)) || ps.find(p => p.img) || ps[0]; used.add(p.id); return p; };
+  grid.innerHTML = [["*", todos], ...rs].map(([r, ps]) => `<li><button class="card subcard" type="button" data-sub="${r}">
+    <div class="cover">${coverHTML(portada(ps))}<span class="sub-n">${fmt(ps.length)}</span></div>
+    <h3>${r === "*" ? "Todos los vídeos" : esc(subLabel(r))}</h3></button></li>`).join("");
+  hydrate(grid);
+}
+for (const el of [$("subs"), grid]) el.addEventListener("click", e => {
   const b = e.target.closest("[data-sub]");
   if (!b) return;
+  e.stopPropagation();
   sub = b.dataset.sub || null;
-  run();
-});
+  run(); scrollTo({ top: 0 });
+}, true);
 function renderFilters() {
-  const all = { ...(cat === "ideas" ? ST : {}), ...FLT };
+  const all = cat === "ideas" ? ST : {};
   for (const k of [...flt]) if (!all[k]) flt.delete(k);
+  $("filters").hidden = !Object.keys(all).length;
   $("filters").innerHTML = Object.entries(all).map(([k, [name]]) =>
     `<button type="button" data-f="${k}" aria-pressed="${flt.has(k)}">${name}</button>`).join("");
 }
@@ -176,11 +188,12 @@ for (const row of ["answer-refs"]) $(row).addEventListener("click", e => { const
 function run() {
   const text = q.value.trim();
   $("clear").hidden = !text;
-  renderSubs();
+  const rs = subsDe(cat);
+  renderSubs(rs);
   renderFilters();
   const r = search(ix, text, { cat, limit: Infinity });  // todos: la rejilla carga de 40 en 40 al bajar
   results = r.results;
-  if (sub) results = results.filter(x => x.p.sub?.includes(sub));
+  if (sub && sub !== "*") results = results.filter(x => x.p.sub?.includes(sub));
   for (const k of flt) { const f = (FLT[k] || ST[k])[1]; if (f) results = results.filter(x => f(x.p)); }
   if (flt.has("vistos")) results = [...results].sort((a, b) => (b.p.p || 0) - (a.p.p || 0));
   // el mismo clip guardado dos veces: sale solo el primero; el otro, en su ficha
@@ -188,21 +201,19 @@ function run() {
   results = results.filter(({ p }) => { if (p.dup?.some(d => visto.has(d))) return false; visto.add(p.id); return true; });
   total = results.length; shown = 0;
   grid.innerHTML = "";
-  if (!results.length) {
+  const enCarpetas = rs.length && !sub && !text;  // al entrar en una carpeta: sus subcarpetas con portada
+  grid.classList.toggle("carpetas", !!enCarpetas);
+  if (enCarpetas) pintarCarpetas(rs);
+  else if (!results.length) {
     grid.innerHTML = `<li class="empty">Nada por aquí. Prueba a decirlo de otra forma${cat || flt.size ? " o quita algún filtro" : ""}.</li>`;
   } else renderMore();
   $("folder").hidden = !cat;
-  $("vista").hidden = cat !== "sitios";
-  if (cat !== "sitios") vista = "lista";
-  for (const b of $("vista").children) b.setAttribute("aria-pressed", b.dataset.v === vista);
-  $("mapa").hidden = vista !== "mapa";
-  grid.hidden = vista === "mapa";
-  if (vista === "mapa") pintarMapa();
-  $("folder-t").textContent = cat ? label(cat) + (sub ? ` · ${subLabel(sub)}` : "") : "";
+  $("mapa-btn").hidden = cat !== "sitios";
+  $("folder-t").textContent = cat ? (sub && sub !== "*" ? subLabel(sub) : label(cat)) : "";
   q.placeholder = cat ? "Buscar aquí…" : "¿Qué necesitas?";
-  status.textContent = text
-    ? `${total} ${total === 1 ? "resultado" : "resultados"}, los más útiles primero`
-    : `${total} guardados, ${flt.has("vistos") ? "los más vistos" : "los más recientes"} primero`;
+  status.textContent = enCarpetas ? `${rs.length} subcarpetas · ${fmt(total)} vídeos`
+    : text ? `${total} ${total === 1 ? "resultado" : "resultados"}, los más útiles primero`
+    : `${total} guardados, los más recientes primero`;
   renderChips(r.cats);
   const ask = text.length >= 3 && !!store.askKey();
   $("ask-btn").hidden = !ask;
@@ -321,7 +332,7 @@ $("folders").addEventListener("click", e => {
   q.value = "";
   menu.close(); run(); scrollTo({ top: 0 });
 });
-$("folder-back").addEventListener("click", () => { if (sub) sub = null; else cat = null; run(); scrollTo({ top: 0 }); });
+$("folder-back").addEventListener("click", () => { if (sub && subsDe(cat).length) sub = null; else { cat = null; sub = null; } run(); scrollTo({ top: 0 }); });
 function segCols() {
   const n = cols();
   for (const b of $("seg-cols").children) b.setAttribute("aria-pressed", +b.dataset.cols === n);
@@ -331,6 +342,13 @@ $("aj-close").addEventListener("click", () => aj.close());
 $("seg-cols").addEventListener("click", e => { const b = e.target.closest("[data-cols]"); if (b) { setCols(+b.dataset.cols); segCols(); } });
 // desde ajustes se abren importar o vincular: que no se apilen dos hojas
 document.addEventListener("click", e => { if (e.target.closest("[data-open-import],[data-open-mac]") && aj.open) aj.close(); }, true);
+
+// al bajar, la cabecera se hace pequena (buscador y botones mas bajos, sin la fila de carpetas)
+let compacta = false;
+addEventListener("scroll", () => {
+  const c = scrollY > 60 ? true : scrollY < 20 ? false : compacta;
+  if (c !== compacta) { compacta = c; document.querySelector(".top").classList.toggle("compact", c); }
+}, { passive: true });
 
 // cargar mas al acercarse al final
 new IntersectionObserver(es => { if (es[0].isIntersecting && shown < results.length) renderMore(); },
@@ -369,67 +387,131 @@ function openPost(id, push = true) {
   if (!sheet.open) sheet.showModal();
   sheet.scrollTop = 0;
 }
-// --- mapa de Sitios (Leaflet + OpenStreetMap; los sitios los saca el Mac con Apple Maps) ---
-let vista = "lista", mapa = null, capa = null, yo = null;
-const TIPO_ICO = { restaurantes: "🍽️", bares: "🍸", cafes: "☕", hoteles: "🏨", museos: "🏛️", planes: "🎟️", naturaleza: "🌿", tiendas: "🛍️" };
+// --- mapa de Sitios: MapLibre + OpenFreeMap (vectorial, gratis y sin clave), a pantalla completa ---
+let mapa = null, mapaListo = null, yo = null, mapaCargado = null;
+const mapaDlg = $("mapa-dlg");
+const TIPO = {
+  restaurantes: ["Restaurante", "#F97316", "🍽️"], bares: ["Bar", "#A855F7", "🍸"], cafes: ["Café", "#B45309", "☕"],
+  hoteles: ["Hotel", "#3B82F6", "🏨"], museos: ["Museo", "#14B8A6", "🏛️"], planes: ["Plan", "#EC4899", "🎟️"],
+  naturaleza: ["Naturaleza", "#22C55E", "🌿"], tiendas: ["Tienda", "#EAB308", "🛍️"],
+};
+const TIPO_ICO = Object.fromEntries(Object.entries(TIPO).map(([k, v]) => [k, v[2]]));
 const dirDe = l => [l.a, l.a?.includes(l.ci) ? "" : l.ci].filter(Boolean).join(" · ");
 const appleMaps = l => `https://maps.apple.com/?q=${encodeURIComponent(l.n)}&ll=${l.lat},${l.lng}`;
-function pintarMapa(foco) {
-  if (!window.L) return;
+const oscuro = () => matchMedia("(prefers-color-scheme: dark)").matches;
+function cargarMapLibre() {
+  return mapaCargado ||= new Promise((ok, mal) => {
+    const s = document.createElement("script");
+    s.src = "vendor/maplibre-gl.js"; s.onload = ok; s.onerror = mal;
+    document.head.append(s);
+  });
+}
+// los sitios que tocan: los de la carpeta Sitios (o de la subcarpeta en la que estes)
+function sitiosGeo() {
+  const vistos = new Map();
+  for (const p of ix.posts) {
+    if (!p.cat.includes("sitios") || !p.lug?.length) continue;
+    if (sub && sub !== "*" && cat === "sitios" && !p.sub?.includes(sub)) continue;
+    p.lug.forEach((l, i) => {
+      // el mismo sitio en dos videos: una chincheta, la del video que tenga foto del sitio
+      const k = `${norm(l.n)}|${l.lat.toFixed(3)}|${l.lng.toFixed(3)}`;
+      if (vistos.has(k) && (vistos.get(k).f || !l.f)) return;
+      vistos.set(k, { f: !!l.f, feat: { type: "Feature", geometry: { type: "Point", coordinates: [l.lng, l.lat] },
+        properties: { id: p.id, i, n: l.n, t: l.t, color: (TIPO[l.t] || TIPO.planes)[1] } } });
+    });
+  }
+  return { type: "FeatureCollection", features: [...vistos.values()].map(v => v.feat) };
+}
+async function abrirMapa(foco) {
+  $("mapa-t").textContent = sub && sub !== "*" && cat === "sitios" ? subLabel(sub) : "Sitios";
+  $("mapa-card").hidden = true;
+  if (!mapaDlg.open) { mapaDlg.showModal(); history.pushState({ mapa: 1 }, "", location.pathname + location.search); }
+  await cargarMapLibre();
   if (!mapa) {
-    mapa = L.map("mapa", { zoomControl: false, attributionControl: true }).setView([40.4168, -3.7038], 12);
-    // teselas oficiales de OpenStreetMap (gratis, sin clave); en modo oscuro se invierten por CSS
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19, className: "teselas", attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    }).addTo(mapa);
-    mapa.on("popupopen", e => hydrate(e.popup.getElement()));
+    mapa = new maplibregl.Map({ container: "mapa", style: `https://tiles.openfreemap.org/styles/${oscuro() ? "dark" : "liberty"}`,
+      center: [-3.7038, 40.4168], zoom: 11.5, attributionControl: { compact: true }, pitchWithRotate: false });
+    mapaListo = new Promise(r => mapa.on("load", r)).then(() => {
+      mapa.addSource("sitios", { type: "geojson", data: sitiosGeo(), cluster: true, clusterRadius: 44, clusterMaxZoom: 14 });
+      mapa.addLayer({ id: "grupos", type: "circle", source: "sitios", filter: ["has", "point_count"], paint: {
+        "circle-color": "#F97316", "circle-stroke-color": "#fff", "circle-stroke-width": 3,
+        "circle-radius": ["step", ["get", "point_count"], 16, 10, 20, 50, 26] } });
+      mapa.addLayer({ id: "grupos-n", type: "symbol", source: "sitios", filter: ["has", "point_count"],
+        layout: { "text-field": ["get", "point_count_abbreviated"], "text-font": ["Noto Sans Bold"], "text-size": 13, "text-allow-overlap": true },
+        paint: { "text-color": "#fff" } });
+      mapa.addLayer({ id: "puntos", type: "circle", source: "sitios", filter: ["!", ["has", "point_count"]], paint: {
+        "circle-color": ["get", "color"], "circle-radius": 9, "circle-stroke-color": "#fff", "circle-stroke-width": 3 } });
+      mapa.addLayer({ id: "nombres", type: "symbol", source: "sitios", filter: ["!", ["has", "point_count"]],
+        layout: { "text-field": ["get", "n"], "text-font": ["Noto Sans Bold"], "text-size": 12.5, "text-offset": [0, 1.1],
+          "text-anchor": "top", "text-max-width": 9, "text-optional": true },
+        paint: { "text-color": oscuro() ? "#fff" : "#1c1917", "text-halo-color": oscuro() ? "#000" : "#fff", "text-halo-width": 1.6 } });
+      mapa.on("click", "grupos", async e => {
+        const f = e.features[0];
+        const z = await mapa.getSource("sitios").getClusterExpansionZoom(f.properties.cluster_id);
+        mapa.easeTo({ center: f.geometry.coordinates, zoom: z + 0.3 });
+      });
+      mapa.on("click", "puntos", e => tarjeta(e.features[0].properties));
+      mapa.on("click", e => { if (!mapa.queryRenderedFeatures(e.point, { layers: ["puntos", "grupos"] }).length) $("mapa-card").hidden = true; });
+      for (const l of ["grupos", "puntos"]) {
+        mapa.on("mouseenter", l, () => mapa.getCanvas().style.cursor = "pointer");
+        mapa.on("mouseleave", l, () => mapa.getCanvas().style.cursor = "");
+      }
+    });
   }
-  setTimeout(() => mapa.invalidateSize(), 0);  // estaba oculto: que mida bien
-  if (capa) capa.remove();
-  capa = L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 45 });
-  const puntos = [];
-  for (const { p } of results) for (const l of p.lug || []) {
-    const m = L.marker([l.lat, l.lng], { icon: L.divIcon({ className: "pin", html: `<span><i>${TIPO_ICO[l.t] || "📍"}</i></span>`, iconSize: [34, 34], iconAnchor: [17, 34], popupAnchor: [0, -30] }) });
-    m.bindPopup(`<div class="pop"><button type="button" data-id="${p.id}" class="pop-cover"><div class="cover">${coverHTML(p)}</div></button>
-      <div><b>${esc(l.n)}</b>${l.aprox ? ' <small class="aprox">aprox.</small>' : ""}<br><small>${esc(dirDe(l))}</small>
-      <p><button type="button" class="link" data-id="${p.id}">Ver vídeo</button> <a class="link" href="${appleMaps(l)}" target="_blank" rel="noopener">Apple Maps</a></p></div></div>`, { maxWidth: 260 });
-    m._lug = l;
-    capa.addLayer(m); puntos.push(m);
-  }
-  mapa.addLayer(capa);
+  await mapaListo;
+  mapa.resize();
+  const geo = sitiosGeo();
+  mapa.getSource("sitios").setData(geo);
   if (foco) {
-    const m = puntos.find(m => m._lug.lat === foco.lat && m._lug.lng === foco.lng);
-    if (m) capa.zoomToShowLayer(m, () => m.openPopup()); else mapa.setView([foco.lat, foco.lng], 17);
-  } else if (puntos.length && !yo) {
-    // al abrir: la ciudad con mas sitios (Madrid), no el mundo entero
-    const n = {};
-    for (const m of puntos) n[m._lug.ci] = (n[m._lug.ci] || 0) + 1;
-    const top = Object.keys(n).sort((a, b) => n[b] - n[a])[0];
-    const zona = puntos.filter(m => m._lug.ci === top);
-    mapa.fitBounds(L.latLngBounds(zona.map(m => m.getLatLng())), { padding: [30, 30], maxZoom: 15 });
+    mapa.jumpTo({ center: [foco.lng, foco.lat], zoom: 16.5 });
+    const f = geo.features.find(f => Math.abs(f.geometry.coordinates[0] - foco.lng) < 1e-3 && Math.abs(f.geometry.coordinates[1] - foco.lat) < 1e-3 && norm(f.properties.n) === norm(foco.n))
+      || geo.features.find(f => f.geometry.coordinates[0] === foco.lng && f.geometry.coordinates[1] === foco.lat);
+    if (f) tarjeta(f.properties);
+  } else if (!yo && geo.features.length) {
+    // al abrir: la zona con mas sitios (Madrid), no el mundo entero
+    const zona = new Map();
+    // celdas de ~5 km: abre en el centro de Madrid, no en toda la comunidad
+    for (const f of geo.features) { const [x, y] = f.geometry.coordinates, k = `${Math.round(x * 20)}|${Math.round(y * 20)}`; zona.set(k, [...(zona.get(k) || []), f]); }
+    const fs = [...zona.values()].sort((a, b) => b.length - a.length)[0];
+    const b = new maplibregl.LngLatBounds();
+    for (const f of fs) b.extend(f.geometry.coordinates);
+    mapa.fitBounds(b, { padding: 60, maxZoom: 15, duration: 0 });
   }
 }
-$("vista").addEventListener("click", e => {
-  const b = e.target.closest("[data-v]");
-  if (!b || b.dataset.v === vista) return;
-  vista = b.dataset.v; run();
-});
-$("mapa").addEventListener("click", e => { const b = e.target.closest("[data-id]"); if (b) openPost(b.dataset.id); });
-$("cerca").addEventListener("click", () => {
-  if (!navigator.geolocation) return;
-  $("cerca").textContent = "Buscándote…";
+function tarjeta({ id, i }) {
+  const p = ix.posts.find(x => x.id === id), l = p?.lug?.[+i];
+  if (!l) return;
+  const [nombre, color, ico] = TIPO[l.t] || TIPO.planes;
+  // foto del sitio (un fotograma sin gente que eligio Gemini); si no hay, el icono del tipo, nunca la portada
+  const foto = l.f ? `<img data-cover="${l.f}" alt="">` : `<span class="mc-ico" style="--c:${color}">${ico}</span>`;
+  $("mapa-card").innerHTML = `<div class="mc-foto">${foto}</div>
+    <div class="mc-txt"><b>${esc(l.n)}</b><small>${nombre}${l.ci ? " · " + esc(l.ci) : ""}</small><small class="mc-dir">${esc(l.a || "")}</small>
+      <div class="mc-bot"><a class="mc-ir" href="${appleMaps(l)}" target="_blank" rel="noopener">Cómo llegar</a>
+      <button type="button" class="mc-video" data-id="${p.id}">Ver vídeo</button></div></div>`;
+  $("mapa-card").hidden = false;
+  hydrate($("mapa-card"));
+}
+$("mapa-btn").addEventListener("click", () => abrirMapa());
+$("mapa-card").addEventListener("click", e => { const b = e.target.closest("[data-id]"); if (b) openPost(b.dataset.id); });
+$("mapa-volver").addEventListener("click", () => history.state?.mapa ? history.back() : mapaDlg.close());
+mapaDlg.addEventListener("cancel", e => { e.preventDefault(); $("mapa-volver").click(); });
+$("mapa-yo").addEventListener("click", () => {
+  if (!navigator.geolocation || !mapa) return;
+  $("mapa-yo").classList.add("buscando");
   navigator.geolocation.getCurrentPosition(pos => {
-    const ll = [pos.coords.latitude, pos.coords.longitude];
-    if (yo) yo.setLatLng(ll); else yo = L.circleMarker(ll, { radius: 8, color: "#fff", weight: 3, fillColor: "#0A84FF", fillOpacity: 1 }).addTo(mapa);
-    mapa.setView(ll, 15);
-    $("cerca").textContent = "📍 Cerca de mí";
-  }, () => { $("cerca").textContent = "Sin permiso de ubicación"; }, { enableHighAccuracy: true, timeout: 10000 });
+    const ll = [pos.coords.longitude, pos.coords.latitude];
+    if (!yo) {
+      const el = document.createElement("div"); el.className = "yo";
+      yo = new maplibregl.Marker({ element: el }).setLngLat(ll).addTo(mapa);
+    } else yo.setLngLat(ll);
+    mapa.easeTo({ center: ll, zoom: 14.5 });
+    $("mapa-yo").classList.remove("buscando");
+  }, () => $("mapa-yo").classList.remove("buscando"), { enableHighAccuracy: true, timeout: 10000 });
 });
 function verEnMapa(l) {
-  closeSheet();
-  cat = "sitios"; sub = null; q.value = ""; vista = "mapa";
-  run(); scrollTo({ top: 0 });
-  pintarMapa(l);
+  sheet.close();
+  history.replaceState({ mapa: 1 }, "", location.pathname + location.search);
+  mapaDlg.showModal();
+  abrirMapa(l);
 }
 
 // ficha: la lista de sitios del video (borrar, anadir, volver a investigar)
@@ -517,6 +599,7 @@ $("d-dup").addEventListener("click", e => {
   if (b) openPost(b.dataset.post);
 });
 window.addEventListener("popstate", () => {
+  if (mapaDlg.open && !history.state?.mapa) mapaDlg.close();
   const id = location.hash.slice(1);
   if (id) openPost(id, false); else if (sheet.open) sheet.close();
 });
