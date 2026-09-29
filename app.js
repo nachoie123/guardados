@@ -323,8 +323,16 @@ async function preguntar(text) {
 
 // --- pellizcar: 2, 3 o 4 portadas por fila, como en la galeria de Fotos ---
 // Abrir los dedos agranda (menos columnas); juntarlos, al reves. Se recuerda.
-const COLS_KEY = "guardados.cols";
+const COLS_KEY = "guardados.cols", CCOLS_KEY = "guardados.cols.carpetas";
+// las carpetas tienen su propio zoom (2, 3 o 4 por fila), aparte del de los videos
+function setCCols(n, keep = true) {
+  n = Math.max(2, Math.min(4, n));
+  grid.dataset.ccols = n;
+  if (keep) try { localStorage.setItem(CCOLS_KEY, n); } catch {}
+}
+try { setCCols(+localStorage.getItem(CCOLS_KEY) || 2, false); } catch { setCCols(2, false); }
 function setCols(n, keep = true) {
+  if (grid.classList.contains("carpetas")) return setCCols(n, keep);
   n = Math.max(2, Math.min(4, n));
   if (+grid.dataset.cols === n) return;
   // que la tarjeta que tenias arriba siga arriba al cambiar el tamano
@@ -336,7 +344,8 @@ function setCols(n, keep = true) {
   if (keep) try { localStorage.setItem(COLS_KEY, n); } catch {}
 }
 try { const n = +localStorage.getItem(COLS_KEY); if (n) setCols(n, false); } catch {}
-const cols = () => +grid.dataset.cols || (innerWidth >= 900 ? 5 : innerWidth >= 600 ? 3 : 2);
+const cols = () => grid.classList.contains("carpetas") ? +grid.dataset.ccols || 2
+  : +grid.dataset.cols || (innerWidth >= 900 ? 5 : innerWidth >= 600 ? 3 : 2);
 let pinch = 1;  // escala desde el ultimo cambio de columnas
 function onPinch(scale) {
   if (scale / pinch > 1.3) { setCols(Math.min(cols(), 4) - 1); pinch = scale; }
