@@ -420,3 +420,15 @@ main { padding: 8px 16px calc(var(--safe-b) + 84px); max-width: 1100px; margin: 
 .tabbar button { display: grid; justify-items: center; gap: 2px; min-width: 72px; min-height: 48px; padding: 4px 8px; border: 0; background: none; color: var(--muted); font: inherit; font-size: 11px; font-weight: 600; }
 .tabbar button[aria-current="true"] { color: var(--accent); }
 .tabbar svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* carpetas: cuadradas, de color y con pestana, para no confundirlas con los videos (altos, con portada) */
+.grid.carpetas { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 14px; padding-top: 10px; }
+@media (min-width: 640px) { .grid.carpetas { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.carpeta { position: relative; width: 100%; aspect-ratio: 1; display: grid; grid-template-rows: 1fr auto auto; align-items: end; justify-items: start;
+  padding: 14px; border: 0; border-radius: 6px 20px 20px 20px; background: linear-gradient(145deg, var(--c1), var(--c2)); color: #fff; font: inherit; text-align: left;
+  box-shadow: 0 6px 18px rgb(0 0 0 / .25), inset 0 1px 0 rgb(255 255 255 / .15); transition: transform .12s ease-out; }
+.carpeta::before { content: ""; position: absolute; left: 0; top: -9px; width: 44%; height: 16px; border-radius: 8px 12px 0 0; background: var(--c1); filter: brightness(.85); }
+.carpeta:active { transform: scale(.96); }
+.c-ico { align-self: start; font-size: 40px; line-height: 1; filter: drop-shadow(0 2px 4px rgb(0 0 0 / .3)); }
+.c-nom { font-size: 17px; font-weight: 800; line-height: 1.15; text-shadow: 0 1px 3px rgb(0 0 0 / .3); }
+.c-n { font-size: 13px; opacity: .85; font-weight: 600; margin-top: 2px; }

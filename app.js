@@ -45,6 +45,25 @@ const SUBS = {
   practicas: "Prácticas y CV", estudio: "Técnicas de estudio", universidad: "Universidad",
   outfits: "Outfits", cuidado: "Cuidado personal", entreno: "Entreno", salud: "Salud",
 };
+const ICO = {
+  sitios: "📍", viajes: "✈️", recetas: "🍳", pelis_series: "🎬", anime: "🍥", tecnologia: "💻", ideas: "💡",
+  finanzas: "📈", carrera: "🎓", videojuegos: "🎮", moda: "👕", fitness_salud: "💪", humor: "😂", musica: "🎵",
+  ciencia: "🔬", negocios: "💼", coches: "🏎️", diseño: "🎨", deportes: "⚽", hogar: "🏠", motivacion: "🔥",
+  animales: "🐾", otros: "📦", planes: "🎟️", estudios: "📚", todo: "🗂️", "src:instagram": "📸", "src:tiktok": "🎵",
+  // subcarpetas
+  restaurantes: "🍽️", bares: "🍸", cafes: "☕", hoteles: "🏨", museos: "🏛️", naturaleza: "🌿", tiendas: "🛍️",
+  destinos: "🗺️", trucos: "💡", platos: "🍝", postres: "🍰", saludables: "🥗", rapidas: "⏱️", bebidas: "🍹",
+  recomendaciones: "⭐", escenas: "🎞️", terror: "👻", explicaciones: "🧠", ia: "🤖", programacion: "⌨️",
+  automatizaciones: "⚙️", prompts: "💬", webs: "🌐", gadgets: "🔌", inversion: "💰", trading: "📊", dinero: "🪙",
+  quant: "🧮", practicas: "💼", estudio: "📝", universidad: "🏫", outfits: "👔", cuidado: "🧴", entreno: "🏋️", salud: "❤️",
+};
+// una carpeta: cuadrada, de color, con icono; nada de capturas (para no confundirla con un video)
+function carpetaHTML(attr, clave, nombre, n, colorDe) {
+  const [, c1, c2] = CATS[colorDe] || CATS.otros;
+  return `<li><button class="carpeta" type="button" ${attr} style="--c1:${c1};--c2:${c2}">
+    <span class="c-ico" aria-hidden="true">${ICO[clave] || "📁"}</span>
+    <span class="c-nom">${esc(nombre)}</span><span class="c-n">${fmt(n)} ${n === 1 ? "vídeo" : "vídeos"}</span></button></li>`;
+}
 const subLabel = r => SUBS[r.split("/")[1]] || r.split("/")[1];
 let sub = null;  // subcarpeta elegida dentro de la carpeta actual
 const SRC = ["src:instagram", "src:tiktok"];
@@ -156,12 +175,9 @@ function renderSubs(rs) {
 }
 function pintarCarpetas(rs) {
   const todos = ix.posts.filter(p => p.cat.includes(cat));
-  const used = new Set();
-  const portada = ps => { const p = ps.find(p => p.img && !used.has(p.id)) || ps.find(p => p.img) || ps[0]; used.add(p.id); return p; };
-  grid.innerHTML = [["*", todos], ...rs].map(([r, ps]) => `<li><button class="card subcard" type="button" data-sub="${r}">
-    <div class="cover">${coverHTML(portada(ps))}<span class="sub-n">${fmt(ps.length)}</span></div>
-    <h3>${r === "*" ? "Todos los vídeos" : esc(subLabel(r))}</h3></button></li>`).join("");
-  hydrate(grid);
+  grid.innerHTML = [["*", todos], ...rs].map(([r, ps]) => r === "*"
+    ? carpetaHTML(`data-sub="*"`, "todo", "Todos los vídeos", ps.length, cat)
+    : carpetaHTML(`data-sub="${r}"`, r.split("/")[1], subLabel(r), ps.length, cat)).join("");
 }
 // inicio: una portada por carpeta (las mismas del menu), la mas grande primero
 function pintarInicio() {
@@ -173,12 +189,7 @@ function pintarInicio() {
   Object.keys(n).sort((a, b) => (a === "otros") - (b === "otros") || n[b].length - n[a].length).forEach(c => g.set(c, n[c]));
   // Todos y las redes, al final: lo primero son tus carpetas de verdad
   const orden = [...g].filter(([c, ps]) => ps.length && !["todo", ...SRC].includes(c)).concat([...g].filter(([c]) => ["todo", ...SRC].includes(c)));
-  const used = new Set();
-  const portada = ps => { const p = ps.find(p => p.img && !used.has(p.id)) || ps.find(p => p.img) || ps[0]; used.add(p.id); return p; };
-  grid.innerHTML = orden.map(([c, ps]) => `<li><button class="card subcard" type="button" data-carpeta="${c}">
-    <div class="cover">${coverHTML(portada(ps))}<span class="sub-n">${fmt(ps.length)}</span></div>
-    <h3>${esc(label(c))}</h3></button></li>`).join("");
-  hydrate(grid);
+  grid.innerHTML = orden.map(([c, ps]) => carpetaHTML(`data-carpeta="${c}"`, c, label(c), ps.length, c)).join("");
 }
 grid.addEventListener("click", e => {
   const b = e.target.closest("[data-carpeta]");
