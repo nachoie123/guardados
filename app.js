@@ -57,12 +57,13 @@ const ICO = {
   automatizaciones: "⚙️", prompts: "💬", webs: "🌐", gadgets: "🔌", inversion: "💰", trading: "📊", dinero: "🪙",
   quant: "🧮", practicas: "💼", estudio: "📝", universidad: "🏫", outfits: "👔", cuidado: "🧴", entreno: "🏋️", salud: "❤️",
 };
-// una carpeta: cuadrada, de color, con icono; nada de capturas (para no confundirla con un video)
+// una carpeta: icono de carpeta plano del color de la categoria (como Archivos del iPhone), nombre y
+// numero debajo; 3 por fila. Nada de capturas ni degradados: se distingue al momento de un video.
 function carpetaHTML(attr, clave, nombre, n, colorDe) {
-  const [, c1, c2] = CATS[colorDe] || CATS.otros;
-  return `<li><button class="carpeta" type="button" ${attr} style="--c1:${c1};--c2:${c2}">
-    <span class="c-ico" aria-hidden="true">${ICO[clave] || "📁"}</span>
-    <span class="c-nom">${esc(nombre)}</span><span class="c-n">${fmt(n)} ${n === 1 ? "vídeo" : "vídeos"}</span></button></li>`;
+  const [, c1] = CATS[colorDe] || CATS.otros;
+  return `<li><button class="carpeta" type="button" ${attr} style="--c:${c1}">
+    <svg class="c-svg" viewBox="0 0 64 50" aria-hidden="true"><path class="c-atras" d="M2 7a5 5 0 0 1 5-5h15.5a4 4 0 0 1 2.9 1.2L30 8h27a5 5 0 0 1 5 5v2H2z"/><rect class="c-frente" x="2" y="12" width="60" height="36" rx="5"/></svg>
+    <span class="c-nom">${esc(nombre)}</span><span class="c-n">${fmt(n)}</span></button></li>`;
 }
 const subLabel = r => SUBS[r.split("/")[1]] || r.split("/")[1];
 let sub = null;  // subcarpeta elegida dentro de la carpeta actual
@@ -484,12 +485,12 @@ async function abrirMapa(foco) {
     mapaListo = new Promise(r => mapa.on("load", r)).then(() => {
       // circulos grandes por zona (barrio) que se separan al acercarte; desde zoom 15, cada sitio suelto
       mapa.addSource("sitios", { type: "geojson", data: { type: "FeatureCollection", features: [] },
-        cluster: true, clusterRadius: 48, clusterMaxZoom: 14 });
+        cluster: true, clusterRadius: 30, clusterMaxZoom: 14 });  // pequeno: el centro se reparte en varios
       mapa.addLayer({ id: "grupos", type: "circle", source: "sitios", filter: ["has", "point_count"], paint: {
         "circle-color": "#F97316", "circle-opacity": 0.92, "circle-stroke-color": "#fff", "circle-stroke-width": 3,
-        "circle-radius": ["step", ["get", "point_count"], 20, 5, 26, 15, 32, 40, 40] } });
+        "circle-radius": ["step", ["get", "point_count"], 15, 5, 18, 15, 21, 40, 24] } });
       mapa.addLayer({ id: "grupos-n", type: "symbol", source: "sitios", filter: ["has", "point_count"],
-        layout: { "text-field": ["get", "point_count_abbreviated"], "text-font": ["Noto Sans Bold"], "text-size": 15, "text-allow-overlap": true },
+        layout: { "text-field": ["get", "point_count_abbreviated"], "text-font": ["Noto Sans Bold"], "text-size": 13, "text-allow-overlap": true },
         paint: { "text-color": "#fff" } });
       mapa.addLayer({ id: "puntos", type: "circle", source: "sitios", filter: ["!", ["has", "point_count"]], paint: {
         "circle-color": ["get", "color"], "circle-radius": 10, "circle-stroke-color": "#fff", "circle-stroke-width": 3 } });
