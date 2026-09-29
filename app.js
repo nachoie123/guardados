@@ -62,7 +62,7 @@ const ICO = {
 function carpetaHTML(attr, nombre, n, colorDe, p) {
   const [, c1] = CATS[colorDe] || CATS.otros;
   return `<li><button class="carpeta" type="button" ${attr} style="--c:${c1}">
-    <span class="c-carp"><span class="c-frente">${p ? coverHTML(p) : ""}</span></span>
+    <span class="c-carp"><span class="c-frente">${p ? `<span class="c-foto">${coverHTML(p)}</span>` : ""}</span></span>
     <span class="c-nom">${esc(nombre)}</span><span class="c-n">${fmt(n)}</span></button></li>`;
 }
 const portadaDe = (ps, used) => { const p = ps.find(p => p.img && !used.has(p.id)) || ps.find(p => p.img) || ps[0]; if (p) used.add(p.id); return p; };
