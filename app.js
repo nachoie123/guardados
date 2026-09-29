@@ -44,7 +44,15 @@ const SUBS = {
   inversion: "Inversión", trading: "Trading", dinero: "Dinero y ahorro", quant: "Quant",
   practicas: "Prácticas y CV", estudio: "Técnicas de estudio", universidad: "Universidad",
   outfits: "Outfits", cuidado: "Cuidado personal", entreno: "Entreno", salud: "Salud",
+  // 29/09/2026: subcarpetas para lo que pasaba de ~200 videos
+  asiatico: "Asiático", italiano: "Italiano", hamburguesas: "Hamburguesas", espanola: "Española y tapas",
+  comedia: "Comedia", accion: "Acción", drama: "Drama", scifi: "Ciencia ficción", animacion: "Animación", series: "Series",
+  edits: "Edits", ia_noticias: "Noticias de IA", asistentes: "ChatGPT y Claude", apps: "Apps",
+  memes: "Memes", sketches: "Sketches", clips: "Clips", juegos: "Juegos y simulaciones", bots: "Bots y agentes",
+  visual: "Visual y efectos", negocio: "Negocio", hardware: "Hardware",
 };
+// la misma clave con otro nombre segun la carpeta (restaurantes en Sitios = "Otros restaurantes")
+const SUBS_EN = { "sitios/restaurantes": "Otros restaurantes", "ideas/webs": "Webs y SaaS", "ideas/automatizaciones": "Automatizaciones" };
 const ICO = {
   sitios: "📍", viajes: "✈️", recetas: "🍳", pelis_series: "🎬", anime: "🍥", tecnologia: "💻", ideas: "💡",
   finanzas: "📈", carrera: "🎓", videojuegos: "🎮", moda: "👕", fitness_salud: "💪", humor: "😂", musica: "🎵",
@@ -65,7 +73,7 @@ function carpetaHTML(attr, nombre, n, colorDe, p) {
     <span class="c-nom">${esc(nombre)}</span><span class="c-n">${fmt(n)} ${n === 1 ? "vídeo" : "vídeos"}</span></button></li>`;
 }
 const portadaDe = (ps, used) => { const p = ps.find(p => p.img && !used.has(p.id)) || ps.find(p => p.img) || ps[0]; if (p) used.add(p.id); return p; };
-const subLabel = r => SUBS[r.split("/")[1]] || r.split("/")[1];
+const subLabel = r => SUBS_EN[r] || SUBS[r.split("/")[1]] || r.split("/")[1];
 let sub = null;  // subcarpeta elegida dentro de la carpeta actual
 const SRC = ["src:instagram", "src:tiktok"];
 const srcOf = p => "src:" + (p.src || "instagram");
@@ -263,9 +271,10 @@ function run() {
     : text ? `${total} ${total === 1 ? "resultado" : "resultados"}, los más útiles primero`
     : `${total} guardados, los más recientes primero`;
   renderChips(r.cats);
-  const ask = text.length >= 3 && !!store.askKey();
+  // siempre a mano (Nacho): sin buscar nada abre una caja para escribir la pregunta
+  const ask = !!store.askKey();
   $("ask-btn").hidden = !ask;
-  if (ask) $("ask-btn").textContent = `✨ Pregúntale a tus guardados: «${text}»`;
+  if (ask) $("ask-btn").textContent = text.length >= 3 ? `✨ Pregúntale a tus guardados: «${text}»` : "✨ Pregúntale a tus guardados";
   const url = new URL(location);
   text ? url.searchParams.set("q", text) : url.searchParams.delete("q");
   cat ? url.searchParams.set("cat", cat) : url.searchParams.delete("cat");
@@ -275,8 +284,20 @@ function run() {
 // --- preguntame: Gemini lee tus guardados mas relacionados y responde ---
 // La clave de Gemini llega cifrada con la sincronizacion (sync-pack.py). Tope: 40 preguntas al dia.
 $("answer-x").addEventListener("click", () => { $("answer").hidden = true; });
-$("ask-btn").addEventListener("click", async () => {
+$("ask-btn").addEventListener("click", () => {
   const text = q.value.trim();
+  if (text.length >= 3) return preguntar(text);
+  $("ask-form").hidden = false;
+  $("ask-q").focus();
+});
+$("ask-form").addEventListener("submit", e => {
+  e.preventDefault();
+  const text = $("ask-q").value.trim();
+  if (text.length < 3) return;
+  $("ask-q").blur();
+  preguntar(text);
+});
+async function preguntar(text) {
   const box = $("answer"), txt = $("answer-txt"), refs = $("answer-refs");
   box.hidden = false; refs.innerHTML = ""; txt.textContent = "Leyendo tus guardados…";
   box.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -298,7 +319,7 @@ $("ask-btn").addEventListener("click", async () => {
       : /429|503/.test(e?.message) ? "Gemini está saturado ahora mismo (el cupo gratis va por minutos). Prueba en un minuto."
       : "No he podido preguntar (¿sin conexión?). Prueba otra vez.";
   }
-});
+}
 
 // --- pellizcar: 2, 3 o 4 portadas por fila, como en la galeria de Fotos ---
 // Abrir los dedos agranda (menos columnas); juntarlos, al reves. Se recuerda.
