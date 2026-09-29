@@ -453,7 +453,11 @@ async function abrirMapa(foco) {
         mapa.easeTo({ center: f.geometry.coordinates, zoom: z + 0.3 });
       });
       mapa.on("click", "puntos", e => tarjeta(e.features[0].properties));
-      mapa.on("click", e => { if (!mapa.queryRenderedFeatures(e.point, { layers: ["puntos", "grupos"] }).length) $("mapa-card").hidden = true; });
+      mapa.on("click", e => {
+        if (mapa.queryRenderedFeatures(e.point, { layers: ["puntos", "grupos"] }).length) return;
+        $("mapa-card").hidden = true; hoja.hidden = false;  // tocar el mapa: fuera la tarjeta, vuelve la lista
+      });
+      mapa.on("moveend", () => { if (hoja.dataset.estado === "alta" && !yo) pintarLista(); });
       for (const l of ["grupos", "puntos"]) {
         mapa.on("mouseenter", l, () => mapa.getCanvas().style.cursor = "pointer");
         mapa.on("mouseleave", l, () => mapa.getCanvas().style.cursor = "");
@@ -462,8 +466,11 @@ async function abrirMapa(foco) {
   }
   await mapaListo;
   mapa.resize();
-  const geo = sitiosGeo();
+  const geo = geoActual = sitiosGeo();
   mapa.getSource("sitios").setData(geo);
+  hoja.hidden = !!foco;
+  estadoHoja("baja");
+  $("hoja-sub").textContent = `${fmt(geo.features.length)} sitios`;
   if (foco) {
     mapa.jumpTo({ center: [foco.lng, foco.lat], zoom: 16.5 });
     const f = geo.features.find(f => Math.abs(f.geometry.coordinates[0] - foco.lng) < 1e-3 && Math.abs(f.geometry.coordinates[1] - foco.lat) < 1e-3 && norm(f.properties.n) === norm(foco.n))
@@ -491,8 +498,83 @@ function tarjeta({ id, i }) {
       <div class="mc-bot"><a class="mc-ir" href="${appleMaps(l)}" target="_blank" rel="noopener">Cómo llegar</a>
       <button type="button" class="mc-video" data-id="${p.id}">Ver vídeo</button></div></div>`;
   $("mapa-card").hidden = false;
+  hoja.hidden = true;  // con la tarjeta de un sitio abierta, la lista se aparta
   hydrate($("mapa-card"));
 }
+
+// --- hoja deslizable con la lista de sitios, los mas cercanos primero (como Apple Maps) ---
+const hoja = $("hoja");
+let geoActual = null;
+const km = (a, b) => {  // [lng, lat]
+  const r = Math.PI / 180, dla = (b[1] - a[1]) * r, dlo = (b[0] - a[0]) * r;
+  const h = Math.sin(dla / 2) ** 2 + Math.cos(a[1] * r) * Math.cos(b[1] * r) * Math.sin(dlo / 2) ** 2;
+  return 12742 * Math.asin(Math.sqrt(h));
+};
+const verKm = d => d < 1 ? `${Math.round(d * 100) * 10} m` : d < 10 ? `${d.toFixed(1).replace(".", ",")} km` : `${Math.round(d)} km`;
+function pintarLista() {
+  if (!mapa || !geoActual) return;
+  const desde = yo ? yo.getLngLat().toArray() : mapa.getCenter().toArray();
+  const fs = geoActual.features.map(f => ({ f, d: km(desde, f.geometry.coordinates) })).sort((a, b) => a.d - b.d).slice(0, 80);
+  $("hoja-t").textContent = yo ? "Cerca de ti" : "Cerca de aquí";
+  $("hoja-sub").textContent = `${fmt(geoActual.features.length)} sitios`;
+  $("hoja-lista").innerHTML = fs.map(({ f, d }) => {
+    const { id, i } = f.properties, p = ix.posts.find(x => x.id === id), l = p?.lug?.[+i];
+    if (!l) return "";
+    const [nombre, color, ico] = TIPO[l.t] || TIPO.planes;
+    const foto = l.f ? `<img data-cover="${l.f}" alt="" loading="lazy">` : `<span class="mc-ico" style="--c:${color}">${ico}</span>`;
+    return `<li><button type="button" data-lug="${id}|${i}"><span class="hl-foto">${foto}</span>
+      <span class="hl-txt"><b>${esc(l.n)}</b><small><span class="hl-km">${verKm(d)}</span> · ${nombre}${l.a ? " · " + esc(l.a) : ""}</small></span></button></li>`;
+  }).join("");
+  hydrate($("hoja-lista"));
+}
+function estadoHoja(e) {
+  hoja.dataset.estado = e;
+  hoja.style.transform = "";
+  if (e === "alta") { pintarLista(); $("hoja-lista").scrollTop = 0; }
+}
+$("hoja-lista").addEventListener("click", e => {
+  const b = e.target.closest("[data-lug]");
+  if (!b) return;
+  const [id, i] = b.dataset.lug.split("|"), l = ix.posts.find(x => x.id === id)?.lug?.[+i];
+  if (!l) return;
+  estadoHoja("baja");
+  mapa.flyTo({ center: [l.lng, l.lat], zoom: 16.5, duration: 900 });
+  tarjeta({ id, i });
+});
+$("hoja-asa").addEventListener("click", () => { if (!movido) estadoHoja(hoja.dataset.estado === "alta" ? "baja" : "alta"); });
+// arrastrar: por el asa siempre; por la lista, solo hacia abajo y estando arriba del todo
+let arrastre = null, movido = false;
+function empezar(e, desdeLista) {
+  if (desdeLista && ($("hoja-lista").scrollTop > 0 || hoja.dataset.estado !== "alta")) return;
+  const alto = hoja.getBoundingClientRect().height, asa = 76;
+  arrastre = { y0: e.clientY, t0: performance.now(), base: hoja.dataset.estado === "alta" ? 0 : alto - asa, max: alto - asa, lista: desdeLista };
+  movido = false;
+}
+function mover(e) {
+  if (!arrastre) return;
+  const dy = e.clientY - arrastre.y0;
+  if (arrastre.lista && dy < 0) { arrastre = null; return; }  // hacia arriba en la lista: que haga scroll
+  if (Math.abs(dy) > 6) movido = true;
+  if (!movido) return;
+  e.preventDefault();
+  hoja.classList.add("arrastrando");
+  hoja.style.transform = `translateY(${Math.min(arrastre.max, Math.max(0, arrastre.base + dy))}px)`;
+}
+function soltar(e) {
+  if (!arrastre) return;
+  hoja.classList.remove("arrastrando");
+  if (movido) {
+    const dy = e.clientY - arrastre.y0, v = dy / Math.max(1, performance.now() - arrastre.t0);  // px/ms
+    const pos = arrastre.base + dy;
+    estadoHoja(v < -0.4 ? "alta" : v > 0.4 ? "baja" : pos < arrastre.max / 2 ? "alta" : "baja");
+  }
+  arrastre = null;
+}
+$("hoja-asa").addEventListener("pointerdown", e => empezar(e, false));
+$("hoja-lista").addEventListener("pointerdown", e => empezar(e, true));
+addEventListener("pointermove", mover, { passive: false });
+addEventListener("pointerup", soltar);
+addEventListener("pointercancel", soltar);
 $("mapa-btn").addEventListener("click", () => abrirMapa());
 $("mapa-card").addEventListener("click", e => { const b = e.target.closest("[data-id]"); if (b) openPost(b.dataset.id); });
 $("mapa-volver").addEventListener("click", () => history.state?.mapa ? history.back() : mapaDlg.close());
@@ -508,6 +590,7 @@ $("mapa-yo").addEventListener("click", () => {
     } else yo.setLngLat(ll);
     mapa.easeTo({ center: ll, zoom: 14.5 });
     $("mapa-yo").classList.remove("buscando");
+    pintarLista();  // ya sabemos donde estas: la lista, por cercania a ti
   }, () => $("mapa-yo").classList.remove("buscando"), { enableHighAccuracy: true, timeout: 10000 });
 });
 function verEnMapa(l) {

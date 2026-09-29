@@ -363,6 +363,27 @@ main { padding: 8px 16px calc(var(--safe-b) + 24px); max-width: 1100px; margin: 
 .mc-ir { background: #0A84FF; color: #fff; }
 .mc-video { background: var(--surface-2); color: var(--text); }
 .maplibregl-ctrl-attrib { font-size: 10px; }
+/* hoja deslizable con la lista de sitios (como la de Apple Maps) */
+.hoja { --asa: 76px; position: absolute; z-index: 3; left: 0; right: 0; bottom: 0; height: 58dvh; display: flex; flex-direction: column;
+  border-radius: 22px 22px 0 0; background: color-mix(in srgb, var(--surface) 96%, transparent); -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px);
+  box-shadow: 0 -4px 30px rgb(0 0 0 / .3); transform: translateY(calc(100% - var(--asa) - env(safe-area-inset-bottom)));
+  transition: transform .32s cubic-bezier(.2, .8, .2, 1); touch-action: none; }
+.hoja[data-estado="alta"] { transform: translateY(0); }
+.hoja.arrastrando { transition: none; }
+.hoja[hidden] { display: none !important; }
+.hoja-asa { flex: none; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 0 8px; padding: 8px 18px 12px; cursor: grab; }
+.hoja-tirador { grid-column: 1 / -1; justify-self: center; width: 38px; height: 5px; border-radius: 99px; background: var(--muted); opacity: .5; margin-bottom: 10px; }
+.hoja-asa b { font-size: 19px; }
+.hoja-asa small { color: var(--muted); font-size: 13px; justify-self: end; }
+.hoja-lista { flex: 1; min-height: 0; overflow-y: auto; list-style: none; margin: 0; padding: 0 12px calc(env(safe-area-inset-bottom) + 16px); touch-action: pan-y; overscroll-behavior: contain; }
+.hoja-lista li button { width: 100%; display: grid; grid-template-columns: 64px 1fr; gap: 12px; align-items: center; padding: 8px 6px; border: 0; border-bottom: 1px solid var(--border); background: none; color: var(--text); font: inherit; text-align: left; }
+.hl-foto { width: 64px; height: 64px; border-radius: 12px; overflow: hidden; background: var(--surface-2); }
+.hl-foto img { width: 100%; height: 100%; object-fit: cover; }
+.hl-foto .mc-ico { font-size: 28px; }
+.hl-txt { display: grid; gap: 2px; min-width: 0; }
+.hl-txt b { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hl-txt small { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hl-km { color: var(--accent) !important; font-weight: 700; }
 /* subcarpetas como portadas */
 .subcard .cover { position: relative; }
 .sub-n { position: absolute; right: 8px; bottom: 8px; padding: 2px 8px; border-radius: 999px; background: rgb(0 0 0 / .6); color: #fff; font-size: 12px; font-weight: 700; }
