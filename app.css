@@ -439,3 +439,7 @@ main { padding: 8px 16px calc(var(--safe-b) + 84px); max-width: 1100px; margin: 
 .ask-form { display: flex; gap: 8px; margin: 8px 0 4px; }
 .ask-form input { flex: 1; min-width: 0; min-height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font: inherit; font-size: 16px; }
 .ask-form input:focus { outline: 2px solid var(--accent); }
+
+.grid .seccion { grid-column: 1 / -1; }
+.grid .seccion h2 { margin: 6px 0 -6px; font-size: 18px; font-weight: 700; }
+.grid .seccion:not(:first-child) h2 { margin-top: 14px; }

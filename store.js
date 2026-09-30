@@ -100,7 +100,7 @@ export function parseFile(json) {
         src: p.src || "instagram", url: p.url || null,
         ideas: (p.cat || []).includes("ideas"),
         dur: p.dur || 0, que: p.que || "", dup: p.dup || [],
-        cat: p.cat || null, sub: p.sub || [], ciudad: p.ciudad || "", lug: p.lug || null,  // carpetas de Gemini (carpetas.py)  // carpeta Ideas: la decide el Mac (ideas.py), no rules.js
+        cat: p.cat || null, sub: p.sub || [], ciudad: p.ciudad || "", lug: p.lug || null, col: p.col || null,  // carpetas de Gemini (carpetas.py)  // carpeta Ideas: la decide el Mac (ideas.py), no rules.js
         // mis-guardados.json (export.py --mio) trae la portada dentro, en base64
         thumb: p.cov || null,
       })),
@@ -249,6 +249,7 @@ export async function importItems(parsed, rules, onProgress = () => {}, thumbs =
       img: !!prev?.img, _thumb: i.thumb,
       dur: i.dur || prev?.dur || 0, que: i.que || prev?.que || "",
       dup: i.dup ?? prev?.dup ?? [],
+      col: i.col ?? prev?.col ?? [],  // colecciones de Instagram de Nacho
       // sitios del mapa: si Nacho los toco en el movil (lugMio), no los pisa el Mac
       lug: prev?.lugMio ? prev.lug : (i.lug ?? prev?.lug ?? []), lugMio: !!prev?.lugMio,
       sub: i.sub?.length ? i.sub : (i.cat ? [] : prev?.sub || []), ciudad: i.ciudad || (i.cat ? "" : prev?.ciudad || ""),  // el mismo clip guardado desde otra cuenta (export.py)

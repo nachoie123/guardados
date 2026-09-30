@@ -77,7 +77,7 @@ const subLabel = r => SUBS_EN[r] || SUBS[r.split("/")[1]] || r.split("/")[1];
 let sub = null;  // subcarpeta elegida dentro de la carpeta actual
 const SRC = ["src:instagram", "src:tiktok"];
 const srcOf = p => "src:" + (p.src || "instagram");
-const label = c => (CATS[c] || [c])[0];
+const label = c => c?.startsWith("col:") ? c.slice(4) : (CATS[c] || [c])[0];
 const PAGE = 40;
 
 const $ = id => document.getElementById(id);
@@ -200,8 +200,15 @@ function pintarInicio() {
   Object.keys(n).sort((a, b) => (a === "otros") - (b === "otros") || n[b].length - n[a].length).forEach(c => g.set(c, n[c]));
   // Todos y las redes, al final: lo primero son tus carpetas de verdad
   const orden = [...g].filter(([c, ps]) => ps.length && !["todo", ...SRC].includes(c)).concat([...g].filter(([c]) => ["todo", ...SRC].includes(c)));
+  // primero TUS colecciones de Instagram, tal cual; debajo, las carpetas automaticas
+  const cols = new Map();
+  for (const p of ix.posts) for (const n of p.col || []) (cols.get(n) || cols.set(n, []).get(n)).push(p);
   const used = new Set();
-  grid.innerHTML = orden.map(([c, ps]) => carpetaHTML(`data-carpeta="${c}"`, label(c), ps.length, c, portadaDe(ps, used))).join("");
+  const suyas = [...cols].sort((a, b) => b[1].length - a[1].length)
+    .map(([n, ps]) => carpetaHTML(`data-carpeta="col:${esc(n)}"`, n, ps.length, "src:instagram", portadaDe(ps, used))).join("");
+  const seccion = t => `<li class="seccion"><h2>${t}</h2></li>`;
+  grid.innerHTML = (suyas ? seccion("Tus colecciones de Instagram") + suyas + seccion("Carpetas automáticas") : "")
+    + orden.map(([c, ps]) => carpetaHTML(`data-carpeta="${c}"`, label(c), ps.length, c, portadaDe(ps, used))).join("");
   hydrate(grid);
 }
 grid.addEventListener("click", e => {
@@ -266,7 +273,7 @@ function run() {
   $("tab-inicio").setAttribute("aria-current", String(inicio));
   $("folder-t").textContent = cat ? (sub && sub !== "*" ? subLabel(sub) : label(cat)) : "";
   q.placeholder = cat ? "Buscar aquí…" : "¿Qué necesitas?";
-  status.textContent = inicio ? `${fmt(ix.posts.length)} guardados en ${grid.children.length} carpetas`
+  status.textContent = inicio ? `${fmt(ix.posts.length)} guardados`
     : enCarpetas ? `${rs.length} subcarpetas · ${fmt(total)} vídeos`
     : text ? `${total} ${total === 1 ? "resultado" : "resultados"}, los más útiles primero`
     : `${total} guardados, los más recientes primero`;
