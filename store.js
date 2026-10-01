@@ -354,14 +354,20 @@ export async function syncNow(rules, onProgress = () => {}) {
   const ix = JSON.parse(new TextDecoder().decode(await unseal(k, await getBin("index.bin"))));
   if (ix.gk) ls.set(ASK_KEY, ix.gk);  // claves de Gemini para "Preguntame" (viajan cifradas):
   if (ix.gk2) ls.set(ASK_KEY + "2", ix.gk2);  // A gratis y B de pago
+  return pull(k, ix, getBin, SYNC_POSTS, rules, onProgress);
+}
+
+// Lo comun a los paquetes de Nacho (sync/) y al buzon de cada persona: los datos si
+// han cambiado (postsKey recuerda cual se bajo) y solo las portadas que falten.
+async function pull(k, ix, getBin, postsKey, rules, onProgress) {
   let posts = 0, covers = 0;
-  if (ix.posts && ix.posts !== ls.get(SYNC_POSTS)) {
+  if (ix.posts && ix.posts !== ls.get(postsKey)) {
     onProgress("datos", 0, 1);
     const gz = await unseal(k, await getBin(ix.posts));
     const text = await new Response(new Blob([gz]).stream().pipeThrough(new DecompressionStream("gzip"))).text();
     const r = await importItems(parseFile(JSON.parse(text)), rules);
     posts = r.isNew;
-    ls.set(SYNC_POSTS, ix.posts);
+    ls.set(postsKey, ix.posts);
   }
   const rows = new Map((await loadPosts()).filter(p => !p.img).map(p => [p.id, p]));
   const packs = ix.covers.filter(p => p.ids.some(id => rows.has(id)));
@@ -410,6 +416,59 @@ export async function syncNow(rules, onProgress = () => {}) {
   return posts || covers ? { posts, covers } : null;
 }
 
+// --- buzon cifrado de la app Guardados del Mac (guardados-app/cloud) ---
+// Cada persona tiene el suyo: el Mac sube los mismos paquetes de arriba, cifrados
+// con una llave que solo tienen su Mac y sus moviles. La llave llega una vez por el
+// QR (#conectar=1.<id>.<lectura>.<llave>, en el fragmento: no llega a ningun servidor)
+// y se queda en este dispositivo. El servidor solo ve bytes cifrados.
+// Sin buzon conectado, nada de esto se ejecuta: los paquetes de Nacho (sync/) van igual.
+const BUZON = "guardados.buzon", BUZON_POSTS = "guardados.buzon.posts.v1";
+const B64 = /^[A-Za-z0-9_-]{43}$/;
+const loopback = u => /^http:\/\/(127\.0\.0\.1|localhost)(:\d{2,5})?$/.test(u);
+export function buzon() {
+  try { const b = JSON.parse(ls.get(BUZON) || "null"); return b?.id && b.r && b.k ? b : null; } catch { return null; }
+}
+// acepta el enlace entero del QR o solo el fragmento
+export function setBuzon(s) {
+  const m = String(s || "").match(/#?conectar=1\.([A-Za-z0-9_-]{43})\.([A-Za-z0-9_-]{43})\.([A-Za-z0-9_-]{43})(?:&u=([^&#\s]+))?/);
+  if (!m || !B64.test(m[1]) || !B64.test(m[2]) || !B64.test(m[3])) return false;
+  let u = null;
+  if (m[4]) {  // solo en pruebas: un buzon en el propio ordenador (wrangler dev)
+    try { u = decodeURIComponent(m[4]).replace(/\/$/, ""); } catch { return false; }
+    if (!loopback(u)) return false;
+  }
+  const prev = buzon();
+  ls.set(BUZON, JSON.stringify({ id: m[1], r: m[2], k: m[3], u }));
+  if (prev?.id !== m[1]) ls.set(BUZON_POSTS, null);
+  return true;
+}
+export function forgetBuzon() { ls.set(BUZON, null); ls.set(BUZON_POSTS, null); }
+
+// -> null si no hay nada nuevo; { posts, covers } con lo que ha entrado; { gone: true } si el
+// buzon ya no existe (el Mac cambio la llave: este movil queda desconectado)
+export async function buzonNow(rules, onProgress = () => {}) {
+  const b = buzon();
+  if (!b) return null;
+  const { BUZON_URL } = await import("./buzon-config.js");
+  const base = b.u || BUZON_URL;
+  const get = async f => {
+    const r = await fetch(`${base}/v1/${b.id}/${f}`, { cache: "no-store", credentials: "omit", referrerPolicy: "no-referrer",
+      headers: { Authorization: "Bearer " + b.r } });
+    // "sin buzón": el Mac lo borró al cambiar la llave. "aún no está": el Mac aún lo está subiendo
+    if (r.status === 404 && (await r.text()).startsWith("sin")) { const e = new Error("gone"); e.gone = true; throw e; }
+    if (!r.ok) { const e = new Error("buzon " + r.status); e.pending = r.status === 404; throw e; }
+    return new Uint8Array(await r.arrayBuffer());
+  };
+  let ix;
+  try { ix = JSON.parse(new TextDecoder().decode(await unseal(b.k, await get("index.bin")))); }
+  catch (e) {
+    if (e.gone) { forgetBuzon(); return { gone: true }; }
+    if (e.pending) return { pending: true };
+    throw e;
+  }
+  return pull(b.k, ix, get, BUZON_POSTS, rules, onProgress);
+}
+
 // --- preguntame (Gemini desde el movil) ---
 const ASK_KEY = "guardados.gk", ASK_N = "guardados.ask.n", ASK_MAX = 40;
 export const askKey = () => ls.get(ASK_KEY);
@@ -425,7 +484,7 @@ ${posts.map(p => JSON.stringify(p)).join("\n")}
 Pregunta de Nacho: ${question}
 
 Responde en espanol, directo y breve (maximo 120 palabras), como un amigo que conoce sus guardados.
-Usa SOLO estos guardados. Cita cada uno que menciones con su id entre corchetes, p. ej. [C4ntd3oN8ak].
+Usa SOLO estos guardados. Cita cada uno que menciones con su id entre corchetes, p. ej. [AbCd1234xyz].
 Si pide ideas o proyectos, prioriza los de categoria Ideas y los que no estan hechos (st vacio).
 Si nada encaja, dilo y sugiere como buscarlo.`;
   // Flash-Lite primero; si su cupo diario se acaba (429), el otro modelo tiene el suyo

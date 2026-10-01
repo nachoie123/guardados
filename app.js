@@ -409,7 +409,7 @@ function folders() {
   }).join("");
   hydrate($("folders"));
 }
-$("menu-btn").addEventListener("click", () => { folders(); $("settings-hint").textContent = store.syncKey() ? "✓ Mac" : ""; menu.showModal(); });
+$("menu-btn").addEventListener("click", () => { folders(); $("settings-hint").textContent = linkedAny() ? "✓ Mac" : ""; menu.showModal(); });
 menu.addEventListener("click", e => { if (e.target === menu) menu.close(); });  // tocar fuera = cerrar
 $("folders").addEventListener("click", e => {
   const b = e.target.closest("button[data-cat]");
@@ -933,23 +933,40 @@ async function load() {
 }
 
 // --- sincronizar con el Mac: al abrir la app, si esta vinculada ---
+// Dos caminos, cada uno con su llave: los paquetes de Nacho (sync/, tools/sync-pack.py) y el
+// buzon cifrado de la app Guardados del Mac (store.buzonNow). Sin ninguno, no se hace nada.
+const linkedAny = () => !!(store.syncKey() || store.buzon());
 let syncing = null;
 function sync(onProgress) {
   if (syncing) return syncing;
-  if (!store.syncKey()) return Promise.resolve(null);
+  if (!linkedAny()) return Promise.resolve(null);
   syncing = (async () => {
     try {
-      const r = await store.syncNow(rules, (fase, n, t) => {
+      const prog = (fase, n, t) => {
         onProgress?.(fase, n, t);
         status.textContent = fase === "datos" ? "Trayendo lo nuevo del Mac…" : `Trayendo portadas del Mac… ${fmt(n)} de ${fmt(t)}`;
-      });
+      };
+      let r = null, error = false, extra = null;
+      if (store.syncKey()) {
+        try { r = await store.syncNow(rules, prog); } catch { error = true; }
+      }
+      if (store.buzon()) {
+        try {
+          const b = await store.buzonNow(rules, prog);
+          if (b?.gone || b?.pending) extra = b;
+          else if (b) r = { posts: (r?.posts || 0) + b.posts, covers: (r?.covers || 0) + b.covers };
+        } catch { error = true; }
+      }
       if (r) {
         await load();
         status.textContent = `Del Mac: ${fmt(r.posts)} guardados nuevos, ${fmt(r.covers)} portadas. ` + status.textContent;
       } else if (/^Trayendo/.test(status.textContent)) run();
-      return r;
+      if (extra?.gone) status.textContent = "Tu Mac cambió la llave: este móvil se ha desconectado. Escanea el código nuevo.";
+      else if (extra?.pending && !r) status.textContent = "Tu Mac aún está subiendo tus guardados. Vuelve a abrir la app en un rato.";
+      if (error && !r) { run(); return { error: true }; }  // sin red o sin paquetes: se queda lo que habia
+      return r || extra;
     } catch {
-      run();  // sin red o sin paquetes: se queda lo que habia
+      run();
       return { error: true };
     } finally { syncing = null; }
   })();
@@ -970,11 +987,11 @@ function macView(v) {
   $("mac-start").hidden = v !== "start"; $("scan").hidden = v !== "scan"; $("mac-ok").hidden = v !== "ok";
 }
 function macButton() {
-  $("f-mac").textContent = store.syncKey() ? "✓ Vinculado con el Mac · traer lo nuevo" : "Vincular con el Mac";
+  $("f-mac").textContent = linkedAny() ? "✓ Vinculado con el Mac · traer lo nuevo" : "Vincular con el Mac";
 }
 document.addEventListener("click", e => {
   if (!e.target.closest("[data-open-mac]")) return;
-  if (store.syncKey()) { mac.showModal(); linked(); return; }  // ya vinculado: sincronizar ahora
+  if (linkedAny()) { mac.showModal(); linked(); return; }  // ya vinculado: sincronizar ahora
   macView("start"); mac.showModal();
 });
 $("mac-close").addEventListener("click", () => mac.close());
@@ -997,13 +1014,19 @@ async function linked() {
   if (r?.error) {
     ok.classList.add("err"); $("mac-ok-t").textContent = "QR leído, pero no llego al Mac";
     msg.textContent = "Sin conexión o la red bloquea la web. Prueba con datos móviles; se reintenta sola al abrir la app.";
+  } else if (r?.gone) {
+    ok.classList.add("err"); $("mac-ok-t").textContent = "Este código ya no vale";
+    msg.textContent = "Tu Mac cambió la llave. Pulsa «Conectar el móvil» en la app del Mac y escanea el código nuevo.";
+  } else if (r?.pending) {
+    msg.textContent = "Conectado. Tu Mac aún está subiendo tus guardados: aparecerán solos al volver a abrir la app.";
   } else msg.textContent = r?.covers || r?.posts
     ? `Listo: ${fmt(r.posts)} guardados nuevos y ${fmt(r.covers)} portadas.` : "Todo al día: no faltaba nada.";
   $("mac-done").hidden = false;
   macButton();
 }
 function gotKey(s) {
-  if (!store.setSyncKey(s)) return false;
+  // el QR de Nacho (#k=) o el de la app Guardados del Mac (#conectar=)
+  if (!(/conectar=/.test(s) ? store.setBuzon(s) : store.setSyncKey(s))) return false;
   stopScan(); linked(); return true;
 }
 $("link-mac").addEventListener("click", () => {
@@ -1024,7 +1047,7 @@ $("scan-mac").addEventListener("click", async () => {
       const w = 400, h = Math.round(v.videoHeight * w / v.videoWidth);
       cv.width = w; cv.height = h; cx.drawImage(v, 0, 0, w, h);
       const code = jsQR(cx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: "dontInvert" });
-      if (code?.data?.includes("#k=") && gotKey(code.data)) return;
+      if ((code?.data?.includes("#k=") || code?.data?.includes("#conectar=")) && gotKey(code.data)) return;
     }
     requestAnimationFrame(tick);
   };
@@ -1041,7 +1064,15 @@ async function main() {
     store.setSyncKey(location.hash);
     history.replaceState(history.state, "", location.pathname + location.search);
   }
+  // enlace del QR de la app Guardados del Mac (#conectar=...): la llave se queda en este
+  // dispositivo y se borra de la barra (y del historial) antes de nada
+  let conectado = false;
+  if (location.hash.startsWith("#conectar=")) {
+    conectado = store.setBuzon(location.hash);
+    history.replaceState(history.state, "", location.pathname + location.search);
+  }
   await load();
+  if (conectado) { macButton(); mac.showModal(); await linked(); return; }
   if (location.hash.length > 1) openPost(location.hash.slice(1), false);
   let checked = null;
   try { checked = localStorage.getItem("guardados.covers.v2"); } catch {}
