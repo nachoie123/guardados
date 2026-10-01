@@ -530,10 +530,12 @@ function pintarFiltros() {
   tipoMapa = previo;
   const claves = Object.keys(n).sort((a, b) => n[b] - n[a]);
   if (tipoMapa && !n[tipoMapa]) tipoMapa = null;
+  // "Abierto ahora" solo sale si hay horarios de sobra: con pocos (OSM da ~3%) enganaria ("no sale = cerrado")
+  const conHorario = ix.posts.reduce((s, p) => s + (p.lug?.filter(l => l.h).length || 0), 0);
   const previoA = soloAbiertos; soloAbiertos = true;
   const nAb = sitiosGeo().features.length;  // con el tipo elegido, cuantos estan abiertos
   soloAbiertos = previoA;
-  $("mapa-filtros").innerHTML = (nAb || soloAbiertos ? `<button type="button" class="ab" data-abierto="1" aria-pressed="${soloAbiertos}"><span>🟢</span>Abierto ahora <small>${nAb}</small></button>` : "") + claves.map(k => `<button type="button" data-tipo="${k}" aria-pressed="${tipoMapa === k}"><span>${(TIPO[k] || TIPO.planes)[2]}</span>${(TIPO[k] || TIPO.planes)[0]} <small>${n[k]}</small></button>`).join("");
+  $("mapa-filtros").innerHTML = (conHorario >= 150 && (nAb || soloAbiertos) ? `<button type="button" class="ab" data-abierto="1" aria-pressed="${soloAbiertos}"><span>🟢</span>Abierto ahora <small>${nAb}</small></button>` : "") + claves.map(k => `<button type="button" data-tipo="${k}" aria-pressed="${tipoMapa === k}"><span>${(TIPO[k] || TIPO.planes)[2]}</span>${(TIPO[k] || TIPO.planes)[0]} <small>${n[k]}</small></button>`).join("");
 }
 $("mapa-filtros").addEventListener("click", e => {
   const b = e.target.closest("[data-tipo], [data-abierto]"); if (!b) return;
