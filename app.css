@@ -344,6 +344,12 @@ main { padding: 8px 16px calc(var(--safe-b) + 84px); max-width: 1100px; margin: 
 .mapa-volver { position: absolute; z-index: 2; top: calc(var(--safe-t) + 12px); left: 12px; display: flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 16px 0 10px; border: 0; border-radius: 999px;
   background: color-mix(in srgb, var(--surface) 88%, transparent); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); color: var(--text); font: inherit; font-size: 16px; font-weight: 700; box-shadow: 0 2px 12px rgb(0 0 0 / .25); }
 .mapa-volver svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.mapa-filtros { position: absolute; z-index: 2; top: calc(var(--safe-t) + 66px); left: 0; right: 0; display: flex; gap: 8px; padding: 0 12px 4px; overflow-x: auto; scrollbar-width: none; }
+.mapa-filtros::-webkit-scrollbar { display: none; }
+.mapa-filtros button { flex: none; display: flex; align-items: center; gap: 5px; min-height: 36px; padding: 0 12px; border: 0; border-radius: 999px; background: var(--bg); color: var(--text); font: inherit; font-size: 14px; font-weight: 600; box-shadow: 0 1px 6px rgba(0,0,0,.25); }
+.mapa-filtros button small { color: var(--muted); font-size: 12px; font-weight: 500; }
+.mapa-filtros button[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+.mapa-filtros button[aria-pressed="true"] small { color: inherit; opacity: .7; }
 .mapa-yo { position: absolute; z-index: 2; top: calc(var(--safe-t) + 12px); right: 12px; width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 50%;
   background: color-mix(in srgb, var(--surface) 88%, transparent); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); color: #0A84FF; box-shadow: 0 2px 12px rgb(0 0 0 / .25); }
 .mapa-yo svg { width: 20px; height: 20px; fill: currentColor; }
@@ -432,7 +438,7 @@ main { padding: 8px 16px calc(var(--safe-b) + 84px); max-width: 1100px; margin: 
 .carpeta:active { opacity: .7; }
 .c-portada { display: block; aspect-ratio: 1; border-radius: 18px; overflow: hidden; margin-bottom: 8px; border: 1px solid color-mix(in srgb, var(--text) 16%, transparent); background: linear-gradient(145deg, var(--c1), var(--c2)); }
 .c-portada img, .c-portada .ph { width: 100%; height: 100%; object-fit: cover; display: block; font-size: 0; }
-.c-nom { font-size: 16px; font-weight: 600; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.c-nom { font-size: 16px; font-weight: 600; line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .c-n { font-size: 13px; color: var(--muted); }
 /* el mapa es claro (estilo Google/Apple): lista, tarjeta y botones en claro tambien, aunque el movil este en oscuro */
 .mapa-dlg { --surface: #FFFFFF; --surface-2: #F0EFED; --text: #1C1917; --muted: #57534E; --border: #E7E5E4; color-scheme: light; }
@@ -443,3 +449,7 @@ main { padding: 8px 16px calc(var(--safe-b) + 84px); max-width: 1100px; margin: 
 .grid .seccion { grid-column: 1 / -1; }
 .grid .seccion h2 { margin: 6px 0 -6px; font-size: 18px; font-weight: 700; }
 .grid .seccion:not(:first-child) h2 { margin-top: 14px; }
+
+.mapa-filtros button.ab { order: -1; }
+.mc-hor { display: block; margin-top: 2px; font-size: 12px; }
+.mc-hor.si { color: #15803D; } .mc-hor.no { color: #B91C1C; }

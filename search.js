@@ -49,6 +49,7 @@ const SYN = {
   receta: "recipe cocina cook",
   comida: "food recipe receta",
   cena: "dinner recipe receta",
+  merienda: "merendar snack brunch cafe cafeteria tarta pasteleria",
   barato: "cheap budget low cost gratis free",
   gratis: "free",
   viaje: "travel trip vuelo flight",

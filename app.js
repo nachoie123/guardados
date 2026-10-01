@@ -1,6 +1,7 @@
 import { buildIndex, search, norm } from "./search.js";
 import { makeRules } from "./rules.js";
 import * as store from "./store.js";
+import { abierto } from "./horario.js";
 
 const CATS = {
   tecnologia: ["Tecnología", "#1D4ED8", "#0F172A"],
@@ -72,7 +73,7 @@ function carpetaHTML(attr, nombre, n, colorDe, p) {
     <span class="c-portada" style="--c1:${c1};--c2:${c2}">${p ? coverHTML(p) : ""}</span>
     <span class="c-nom">${esc(nombre)}</span><span class="c-n">${fmt(n)} ${n === 1 ? "vídeo" : "vídeos"}</span></button></li>`;
 }
-const portadaDe = (ps, used) => { const p = ps.find(p => p.img && !used.has(p.id)) || ps.find(p => p.img) || ps[0]; if (p) used.add(p.id); return p; };
+const portadaDe = (ps, used) => { const p = ps.find(p => p.img && !p.dk && !used.has(p.id)) || ps.find(p => p.img && !p.dk) || ps.find(p => p.img) || ps[0]; if (p) used.add(p.id); return p; };
 const subLabel = r => SUBS_EN[r] || SUBS[r.split("/")[1]] || r.split("/")[1];
 let sub = null;  // subcarpeta elegida dentro de la carpeta actual
 const SRC = ["src:instagram", "src:tiktok"];
@@ -499,12 +500,16 @@ function cargarMapLibre() {
   });
 }
 // los sitios que tocan: los de la carpeta Sitios (o de la subcarpeta en la que estes)
-function sitiosGeo() {
+let tipoMapa = null;  // null = todos; si no, la clave de TIPO
+let soloAbiertos = false;  // "Abierto ahora": solo los que tienen horario y estan abiertos
+function sitiosGeo(ignorarTipo) {
   const vistos = new Map();
   for (const p of ix.posts) {
     if (!p.cat.includes("sitios") || !p.lug?.length) continue;
     if (sub && sub !== "*" && cat === "sitios" && !p.sub?.includes(sub)) continue;
     p.lug.forEach((l, i) => {
+      if (!ignorarTipo && tipoMapa && l.t !== tipoMapa) return;
+      if (soloAbiertos && abierto(l.h) !== true) return;
       // el mismo sitio en dos videos: una chincheta, la del video que tenga foto del sitio
       const k = `${norm(l.n)}|${l.lat.toFixed(3)}|${l.lng.toFixed(3)}`;
       if (vistos.has(k) && (vistos.get(k).f || !l.f)) return;
@@ -514,9 +519,38 @@ function sitiosGeo() {
   }
   return { type: "FeatureCollection", features: [...vistos.values()].map(v => v.feat) };
 }
+// chips de tipo con su numero; tocar uno filtra el mapa y la lista, tocarlo otra vez quita el filtro
+function pintarFiltros() {
+  const n = {}, previo = tipoMapa;
+  for (const k of Object.keys(TIPO)) {  // el numero de cada pastilla = lo que saldria al tocarla
+    tipoMapa = k;
+    const c = sitiosGeo().features.length;
+    if (c) n[k] = c;
+  }
+  tipoMapa = previo;
+  const claves = Object.keys(n).sort((a, b) => n[b] - n[a]);
+  if (tipoMapa && !n[tipoMapa]) tipoMapa = null;
+  const previoA = soloAbiertos; soloAbiertos = true;
+  const nAb = sitiosGeo().features.length;  // con el tipo elegido, cuantos estan abiertos
+  soloAbiertos = previoA;
+  $("mapa-filtros").innerHTML = (nAb || soloAbiertos ? `<button type="button" class="ab" data-abierto="1" aria-pressed="${soloAbiertos}"><span>🟢</span>Abierto ahora <small>${nAb}</small></button>` : "") + claves.map(k => `<button type="button" data-tipo="${k}" aria-pressed="${tipoMapa === k}"><span>${(TIPO[k] || TIPO.planes)[2]}</span>${(TIPO[k] || TIPO.planes)[0]} <small>${n[k]}</small></button>`).join("");
+}
+$("mapa-filtros").addEventListener("click", e => {
+  const b = e.target.closest("[data-tipo], [data-abierto]"); if (!b) return;
+  if (b.dataset.abierto) soloAbiertos = !soloAbiertos;
+  else tipoMapa = tipoMapa === b.dataset.tipo ? null : b.dataset.tipo;
+  pintarFiltros();
+  const geo = geoActual = sitiosGeo();
+  mapa.getSource("sitios").setData(geo);
+  $("hoja-sub").textContent = `${fmt(geo.features.length)} sitios`;
+  $("mapa-card").hidden = true; hoja.hidden = false;
+  pintarLista();
+});
 async function abrirMapa(foco) {
   $("mapa-t").textContent = sub && sub !== "*" && cat === "sitios" ? subLabel(sub) : "Sitios";
   $("mapa-card").hidden = true;
+  if (foco) tipoMapa = null, soloAbiertos = false;  // venir de un video: que se vea ese sitio
+  pintarFiltros();
   estadoHoja("baja");
   if (!mapaDlg.open) { mapaDlg.showModal(); history.pushState({ mapa: 1 }, "", location.pathname + location.search); }
   await cargarMapLibre();
@@ -582,6 +616,11 @@ async function abrirMapa(foco) {
     mapa.fitBounds(b, { padding: 60, maxZoom: 15, duration: 0 });
   }
 }
+function estadoHorario(l) {
+  const ab = abierto(l.h);
+  if (ab === null) return "";
+  return `<small class="mc-hor ${ab ? "si" : "no"}">${ab ? "🟢 Abierto ahora" : "🔴 Cerrado ahora"} · ${esc(l.h.length > 60 ? l.h.slice(0, 58) + "…" : l.h)}</small>`;
+}
 function tarjeta({ id, i }) {
   const p = ix.posts.find(x => x.id === id), l = p?.lug?.[+i];
   if (!l) return;
@@ -589,7 +628,7 @@ function tarjeta({ id, i }) {
   // foto del sitio (un fotograma sin gente que eligio Gemini); si no hay, el icono del tipo, nunca la portada
   const foto = l.f ? `<img data-cover="${l.f}" alt="">` : `<span class="mc-ico" style="--c:${color}">${ico}</span>`;
   $("mapa-card").innerHTML = `<div class="mc-foto">${foto}</div>
-    <div class="mc-txt"><b>${esc(l.n)}</b><small>${nombre}${l.ci ? " · " + esc(l.ci) : ""}</small><small class="mc-dir">${esc(l.a || "")}</small>
+    <div class="mc-txt"><b>${esc(l.n)}</b><small>${nombre}${l.ci ? " · " + esc(l.ci) : ""}</small><small class="mc-dir">${esc(l.a || "")}</small>${estadoHorario(l)}
       <div class="mc-bot"><a class="mc-ir" href="${appleMaps(l)}" target="_blank" rel="noopener">Cómo llegar</a>
       <button type="button" class="mc-video" data-id="${p.id}">Ver vídeo</button></div></div>`;
   $("mapa-card").hidden = false;
