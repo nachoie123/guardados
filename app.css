@@ -475,7 +475,7 @@ main { padding: 8px 16px calc(var(--safe-b) + 84px); max-width: 1100px; margin: 
 /* el video encima de la portada; se ve cuando ya tiene imagen */
 .s-media { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border: 0; background: transparent; }
 .slide:not(.sonando) video.s-media { opacity: 0; }
-.s-tap { position: absolute; inset: 0; z-index: 1; }
+.s-tap { position: absolute; inset: 0; z-index: 1; cursor: pointer; }  /* sin cursor, Safari del iPhone no manda el toque de un div */
 /* TikTok pinta su cabecera (autor) arriba: se sube el reproductor para que no tape el boton de volver */
 iframe.s-media { top: -64px; height: calc(100% + 64px); }
 .s-play { transition: opacity var(--t-med) ease, transform var(--t-fast) ease-out; }
@@ -510,3 +510,4 @@ iframe.s-media { top: -64px; height: calc(100% + 64px); }
 .slide.cargando .s-play::after { content: ""; width: 34px; height: 34px; border-radius: 50%; border: 3px solid rgb(255 255 255 / .3); border-top-color: #fff; animation: gira .8s linear infinite; }
 @keyframes gira { to { transform: rotate(1turn); } }
 @media (prefers-reduced-motion: reduce) { .slide.cargando .s-play::after { animation-duration: 2.4s; } }
+.s-play:focus { outline: none; }

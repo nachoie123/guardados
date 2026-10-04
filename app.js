@@ -849,22 +849,26 @@ function videoFeed() {
   v.className = "s-media"; v.playsInline = true; v.loop = true; v.preload = "auto";
   v.setAttribute("playsinline", ""); v.setAttribute("webkit-playsinline", "");
   v.addEventListener("playing", () => v.closest(".slide")?.classList.replace("cargando", "sonando") || v.closest(".slide")?.classList.add("sonando"));
-  v.addEventListener("error", () => {
+  v.addEventListener("error", async () => {
     const s = v.closest(".slide"), src = v.getAttribute("src");
     if (!s || !src) return;
-    // Instagram frena a veces al servidor (429): se reintenta dos veces antes de dar el video por perdido
-    const n = +(v.dataset.intentos || 0);
-    if (n < 2) {
-      v.dataset.intentos = n + 1;
-      return setTimeout(() => {
-        if (v.closest(".slide") !== s) return;
-        v.src = src.split("?")[0] + "?r=" + (n + 1);
-        v.play().catch(() => {});
-      }, 1500 + 1500 * n);
-    }
-    s.classList.remove("cargando"); s.classList.add("sin-video"); v.remove();
+    // ¿bloqueado de verdad (404: musica con derechos) o Instagram frenando un momento (503)? Se pregunta al Worker
+    const base = src.split("?")[0], n = +(v.dataset.intentos || 0);
+    const st = await fetch(base, { redirect: "manual", cache: "no-store" }).then(r => r.type === "opaqueredirect" ? 302 : r.status).catch(() => 0);
+    if (v.closest(".slide") !== s) return;
+    if (st === 404) return sinVideo(s, "Instagram no deja ver este vídeo fuera de su app", true);
+    if (n >= 4) return sinVideo(s, "Instagram está ocupado. Toca para intentarlo otra vez", false);
+    v.dataset.intentos = n + 1;
+    setTimeout(() => { if (v.closest(".slide") === s) { v.src = base + "?r=" + (n + 1); v.play().catch(() => {}); } }, st === 302 ? 0 : 2000 * (n + 1));
   });
   return v;
+}
+// bloqueado: el boton abre el reel en Instagram; ocupado: el boton lo vuelve a intentar
+function sinVideo(s, txt, bloqueado) {
+  s.classList.remove("cargando"); s.classList.add("sin-video");
+  s.classList.toggle("ocupado", !bloqueado);
+  s.querySelector(".s-aviso").textContent = txt;
+  feedVideo?.remove();
 }
 function quitarMedia() {
   if (feedVideo) { feedVideo.pause(); feedVideo.removeAttribute("src"); feedVideo.remove(); }
@@ -874,7 +878,8 @@ function quitarMedia() {
 function reproducir() {
   quitarMedia();
   const s = feedBox.querySelector(`.slide[data-i="${feedI}"]`), p = feedLista[feedI];
-  if (!s || !p || s.classList.contains("sin-video")) return;
+  if (!s || !p || (s.classList.contains("sin-video") && !s.classList.contains("ocupado"))) return;
+  s.classList.remove("sin-video", "ocupado");
   if (p.src === "tiktok") {
     const f = Object.assign(document.createElement("iframe"), { className: "s-media", allow: "autoplay; encrypted-media; fullscreen",
       src: `https://www.tiktok.com/player/v1/${p.id.slice(3)}?autoplay=1&loop=1&controls=0&music_info=0&description=0&rel=0&native_context_menu=0&closed_caption=0` });
@@ -882,7 +887,7 @@ function reproducir() {
     s.querySelector(".s-fondo").after(f);
     return;
   }
-  if (!p.v) return s.classList.add("sin-video");  // foto o carrusel: nada que reproducir
+  if (!p.v) return sinVideo(s, "Es una foto o un carrusel: ábrelo en Instagram", true);
   const v = videoFeed();
   s.querySelector(".s-fondo").after(v);
   s.classList.add("cargando");
@@ -932,6 +937,7 @@ feedBox.addEventListener("click", e => {
   if (!p) return;
   const v = e.target.closest("[data-ver]");
   if (e.target.closest("[data-sonido]")) cambiarSonido();
+  else if (e.target.closest("[data-play], .s-tap") && s.classList.contains("ocupado")) { s.classList.remove("sin-video", "ocupado"); reproducir(); }
   else if (e.target.closest("[data-play]") && s.classList.contains("sin-video")) Object.assign(document.createElement("a"), { href: p.url, target: "_blank", rel: "noopener" }).click();
   else if (e.target.closest(".s-tap, [data-play]")) pausar(s);
   else if (v) abrirMapa(p.lug[+v.dataset.ver]);
