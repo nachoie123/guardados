@@ -55,7 +55,7 @@
   <div class="filters" id="filters" role="group" aria-label="Filtros rápidos"></div>
   <button type="button" class="ask-btn" id="ask-btn" hidden></button>
   <form class="ask-form" id="ask-form" hidden>
-    <input id="ask-q" type="search" autocomplete="off" enterkeyhint="send" placeholder="Ej.: ¿qué japoneses tengo cerca de Chamberí?">
+    <input id="ask-q" type="search" aria-label="Pregunta a tus guardados" autocomplete="off" enterkeyhint="send" placeholder="Ej.: ¿qué japoneses tengo cerca de Chamberí?">
     <button type="submit" class="btn-mini">Preguntar</button>
   </form>
   <section class="answer" id="answer" hidden aria-live="polite">
@@ -99,7 +99,7 @@
         <h3>Sitios</h3>
         <ul id="d-lug-list"></ul>
         <form id="d-lug-add" class="d-lug-add">
-          <input type="search" name="q" placeholder="Añadir sitio: «Casa Pepe Chamberí»" autocomplete="off" enterkeyhint="search">
+          <input type="search" name="q" aria-label="Añadir sitio" placeholder="Añadir sitio: «Casa Pepe Chamberí»" autocomplete="off" enterkeyhint="search">
           <button type="submit" class="btn-mini">Añadir</button>
         </form>
         <button type="button" class="link" id="d-lug-inv">Volver a investigar el vídeo</button>
@@ -114,6 +114,10 @@
   <button type="button" id="tab-inicio">
     <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg>
     <span>Carpetas</span>
+  </button>
+  <button type="button" id="tab-feed">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="2.5" width="14" height="19" rx="3"/><path d="M10.5 9.5v5l4-2.5z" class="fill"/></svg>
+    <span>Deslizar</span>
   </button>
   <button type="button" id="tab-mapa">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4 3 6.5v13.5l6-2.5 6 2.5 6-2.5V4l-6 2.5z"/><path d="M9 4v13.5M15 6.5V20"/></svg>
@@ -138,6 +142,13 @@
     </div>
     <ul class="hoja-lista" id="hoja-lista"></ul>
   </section>
+</dialog>
+
+<dialog class="feed" id="feed" aria-label="Vídeos uno a uno">
+  <div class="feed-scroll" id="feed-scroll"></div>
+  <button type="button" class="mapa-volver feed-volver" id="feed-volver" aria-label="Volver">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg><span id="feed-t">Todo</span>
+  </button>
 </dialog>
 
 <dialog class="drawer" id="menu" aria-label="Carpetas y ajustes">

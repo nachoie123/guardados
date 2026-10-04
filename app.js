@@ -51,9 +51,11 @@ const SUBS = {
   edits: "Edits", ia_noticias: "Noticias de IA", asistentes: "ChatGPT y Claude", apps: "Apps",
   memes: "Memes", sketches: "Sketches", clips: "Clips", juegos: "Juegos y simulaciones", bots: "Bots y agentes",
   visual: "Visual y efectos", negocio: "Negocio", hardware: "Hardware",
+  // 04/10/2026 (export.py sitios_geo): Sitios partido por donde esta el sitio
+  japon: "Japón", japoneses: "Japoneses", fuera: "Fuera de Madrid",
 };
 // la misma clave con otro nombre segun la carpeta (restaurantes en Sitios = "Otros restaurantes")
-const SUBS_EN = { "sitios/restaurantes": "Otros restaurantes", "ideas/webs": "Webs y SaaS", "ideas/automatizaciones": "Automatizaciones" };
+const SUBS_EN = { "sitios/restaurantes": "Otros restaurantes", "sitios/asiatico": "Otros asiáticos", "ideas/webs": "Webs y SaaS", "ideas/automatizaciones": "Automatizaciones" };
 const ICO = {
   sitios: "📍", viajes: "✈️", recetas: "🍳", pelis_series: "🎬", anime: "🍥", tecnologia: "💻", ideas: "💡",
   finanzas: "📈", carrera: "🎓", videojuegos: "🎮", moda: "👕", fitness_salud: "💪", humor: "😂", musica: "🎵",
@@ -65,6 +67,7 @@ const ICO = {
   recomendaciones: "⭐", escenas: "🎞️", terror: "👻", explicaciones: "🧠", ia: "🤖", programacion: "⌨️",
   automatizaciones: "⚙️", prompts: "💬", webs: "🌐", gadgets: "🔌", inversion: "💰", trading: "📊", dinero: "🪙",
   quant: "🧮", practicas: "💼", estudio: "📝", universidad: "🏫", outfits: "👔", cuidado: "🧴", entreno: "🏋️", salud: "❤️",
+  japon: "🗾", japoneses: "🍣", fuera: "✈️",
 };
 // una carpeta, como las colecciones de Instagram: portada cuadrada a sangre, nombre y numero debajo
 function carpetaHTML(attr, nombre, n, colorDe, p) {
@@ -175,7 +178,9 @@ function subsDe(c) {
     if (!n.has(r)) n.set(r, []);
     n.get(r).push(p);
   }
-  return [...n].sort((a, b) => b[1].length - a[1].length);
+  // los de Madrid primero, por tipo; Japon y Fuera de Madrid al final
+  const lejos = r => r === "sitios/japon" || r === "sitios/fuera";
+  return [...n].sort((a, b) => lejos(a[0]) - lejos(b[0]) || b[1].length - a[1].length);
 }
 function renderSubs(rs) {
   if (sub && sub !== "*" && !rs.some(([r]) => r === sub)) sub = null;
@@ -245,7 +250,8 @@ $("filters").addEventListener("click", e => {
 const miniCard = (p, sub) => `<button type="button" data-id="${p.id}"><div class="cover">${coverHTML(p)}</div><small>${esc(sub || p.t)}</small></button>`;
 for (const row of ["answer-refs"]) $(row).addEventListener("click", e => { const b = e.target.closest("[data-id]"); if (b) openPost(b.dataset.id); });
 
-function run() {
+// y: volver a esa altura despues de pintar (al sincronizar o al reabrir la app), en vez de saltar arriba
+function run(y) {
   const text = q.value.trim();
   $("clear").hidden = !text;
   const rs = subsDe(cat);
@@ -287,7 +293,30 @@ function run() {
   text ? url.searchParams.set("q", text) : url.searchParams.delete("q");
   cat ? url.searchParams.set("cat", cat) : url.searchParams.delete("cat");
   history.replaceState(history.state, "", url);
+  if (typeof y === "number" && y > 0) {
+    while (shown < results.length && document.documentElement.scrollHeight < y + innerHeight) renderMore();
+    scrollTo(0, y);
+  }
+  guardarEstado();
 }
+
+// --- la app vuelve donde la dejaste (Nacho, 04/10/2026: "me salgo y al volver se resetea") ---
+// iOS cierra la app de la pantalla de inicio cuando esta en segundo plano y la abre de cero:
+// la carpeta, la subcarpeta, la busqueda, la altura y el video de Deslizar se apuntan aqui.
+const ESTADO_KEY = "guardados.estado";
+function guardarEstado() {
+  try {
+    localStorage.setItem(ESTADO_KEY, JSON.stringify({ cat, sub, q: q.value.trim(), y: Math.round(scrollY),
+      feed: $("feed").open ? feedI : null }));
+  } catch {}
+}
+function leerEstado() {
+  try { return JSON.parse(localStorage.getItem(ESTADO_KEY)) || {}; } catch { return {}; }
+}
+let guardarT;
+addEventListener("scroll", () => { clearTimeout(guardarT); guardarT = setTimeout(guardarEstado, 250); }, { passive: true });
+addEventListener("pagehide", guardarEstado);
+document.addEventListener("visibilitychange", () => { if (document.hidden) guardarEstado(); });
 
 // --- preguntame: Gemini lee tus guardados mas relacionados y responde ---
 // La clave de Gemini llega cifrada con la sincronizacion (sync-pack.py). Tope: 40 preguntas al dia.
@@ -682,6 +711,7 @@ $("hoja-lista").addEventListener("click", e => {
   tarjeta({ id, i });
 });
 $("hoja-asa").addEventListener("click", () => { if (!movido) estadoHoja(hoja.dataset.estado === "alta" ? "baja" : "alta"); });
+$("hoja-asa").addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); estadoHoja(hoja.dataset.estado === "alta" ? "baja" : "alta"); } });
 // arrastrar: por el asa siempre; por la lista, solo hacia abajo y estando arriba del todo
 let arrastre = null, movido = false;
 function empezar(e, desdeLista) {
@@ -739,6 +769,77 @@ function verEnMapa(l) {
   mapaDlg.showModal();
   abrirMapa(l);
 }
+
+// --- Deslizar: los videos de donde estes (carpeta, subcarpeta o busqueda), uno por pantalla, como Reels ---
+// Instagram no deja reproducir sus reels dentro de otra web (el reproductor incrustado solo dice
+// "Ver en Instagram"): se ve la portada en grande con sus sitios, y "Ver" abre el reel en la app.
+const feedDlg = $("feed"), feedBox = $("feed-scroll");
+let feedLista = [], feedN = 0, feedI = 0;
+const FEED_LOTE = 12;
+const PLAY_ICO = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" class="fill"/></svg>';
+const MAPA_ICO = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4 3 6.5v13.5l6-2.5 6 2.5 6-2.5V4l-6 2.5z"/><path d="M9 4v13.5M15 6.5V20"/></svg>';
+const INFO_ICO = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.8" r="1.1" class="fill"/></svg>';
+function feedSlide(p, i) {
+  const ls = p.lug || [], desde = yo?.getLngLat().toArray();
+  const lugs = ls.slice(0, 3).map((l, j) => `<li><button type="button" data-ver="${j}"><span class="s-ico">${TIPO_ICO[l.t] || "📍"}</span>
+      <span class="s-l"><b>${esc(l.n)}</b><small>${desde ? verKm(km(desde, [l.lng, l.lat])) + " · " : ""}${esc(dirDe(l))}</small></span></button>
+      <a class="s-ir" href="${appleMaps(l)}" target="_blank" rel="noopener">Ir</a></li>`).join("")
+    + (ls.length > 3 ? `<li class="s-mas">y ${ls.length - 3} ${ls.length - 3 === 1 ? "sitio" : "sitios"} más en la ficha</li>` : "");
+  const tt = p.src === "tiktok";
+  return `<section class="slide" data-i="${i}" data-id="${p.id}">
+    <div class="s-fondo">${coverHTML(p)}</div>
+    <a class="s-play" href="${p.url}" target="_blank" rel="noopener" aria-label="${tt ? "Ver en TikTok" : "Ver en Instagram"}">${PLAY_ICO}</a>
+    <div class="s-info"><p class="s-who">@${esc(p.u)}</p><h2>${esc(p.t)}</h2>${lugs ? `<ul class="s-lug">${lugs}</ul>` : ""}</div>
+    <div class="s-acc">
+      <a class="s-btn" href="${p.url}" target="_blank" rel="noopener">${PLAY_ICO}<span>Ver</span></a>
+      ${ls.length ? `<button type="button" class="s-btn" data-mapa>${MAPA_ICO}<span>Mapa</span></button>` : ""}
+      <button type="button" class="s-btn" data-ficha>${INFO_ICO}<span>Ficha</span></button>
+    </div></section>`;
+}
+function feedMas(hasta = 0) {
+  if (feedN >= feedLista.length) return;
+  const fin = Math.min(feedLista.length, Math.max(feedN + FEED_LOTE, hasta + 4));
+  feedBox.insertAdjacentHTML("beforeend", feedLista.slice(feedN, fin).map((p, k) => feedSlide(p, feedN + k)).join(""));
+  for (const el of feedBox.querySelectorAll(".slide:not([data-visto])")) { el.dataset.visto = 1; feedVer.observe(el); }
+  feedN = fin;
+  hydrate(feedBox);
+}
+// el video que ocupa la pantalla: se apunta (para volver a el) y, cerca del final, se pintan mas
+const feedVer = new IntersectionObserver(es => {
+  for (const e of es) if (e.isIntersecting) {
+    feedI = +e.target.dataset.i;
+    if (feedI > feedN - 4) feedMas();
+    guardarEstado();
+  }
+}, { root: feedBox, threshold: 0.6 });
+function abrirFeed(desde = 0) {
+  feedLista = results.map(r => r.p);
+  if (!feedLista.length) return;
+  feedI = Math.min(Math.max(0, desde), feedLista.length - 1);
+  feedBox.innerHTML = ""; feedN = 0;
+  feedMas(feedI);
+  $("feed-t").textContent = q.value.trim() ? `«${q.value.trim()}»` : cat ? (sub && sub !== "*" ? subLabel(sub) : label(cat)) : "Todo";
+  if (!feedDlg.open) { feedDlg.showModal(); history.pushState({ feed: 1 }, "", location.pathname + location.search); }
+  feedBox.scrollTop = feedI * feedBox.clientHeight;
+  guardarEstado();
+}
+$("tab-feed").addEventListener("click", () => {
+  // empieza por el primer video que tenias a la vista en la rejilla
+  const visible = [...grid.querySelectorAll(".card")].find(b => b.getBoundingClientRect().bottom > 120);
+  const i = visible ? results.findIndex(r => r.p.id === visible.dataset.id) : 0;
+  abrirFeed(Math.max(0, i));
+});
+$("feed-volver").addEventListener("click", () => history.state?.feed ? history.back() : feedDlg.close());
+feedDlg.addEventListener("cancel", e => { e.preventDefault(); $("feed-volver").click(); });
+feedDlg.addEventListener("close", guardarEstado);
+feedBox.addEventListener("click", e => {
+  const s = e.target.closest(".slide"), p = s && ix.posts.find(x => x.id === s.dataset.id);
+  if (!p) return;
+  const v = e.target.closest("[data-ver]");
+  if (v) abrirMapa(p.lug[+v.dataset.ver]);
+  else if (e.target.closest("[data-mapa]")) abrirMapa(p.lug[0]);
+  else if (e.target.closest("[data-ficha]")) openPost(p.id);
+});
 
 // ficha: la lista de sitios del video (borrar, anadir, volver a investigar)
 function pintarLugares(p) {
@@ -826,6 +927,7 @@ $("d-dup").addEventListener("click", e => {
 });
 window.addEventListener("popstate", () => {
   if (mapaDlg.open && !history.state?.mapa) mapaDlg.close();
+  if (feedDlg.open && !history.state?.feed && !history.state?.mapa && !location.hash) feedDlg.close();
   const id = location.hash.slice(1);
   if (id) openPost(id, false); else if (sheet.open) sheet.close();
 });
@@ -913,7 +1015,7 @@ $("wipe").addEventListener("click", async () => {
 });
 
 // tus guardados si los has importado; si no, la muestra
-async function load() {
+async function load(y) {
   const posts = await store.loadPosts();
   mine = posts.length > 0;
   let data;
@@ -929,7 +1031,7 @@ async function load() {
   $("f-import").textContent = mine ? "Actualizar con un fichero nuevo" : "Importar mis guardados";
   $("built").textContent = mine ? `${fmt(ix.posts.length)} guardados tuyos, en este dispositivo` : `Muestra de ${ix.posts.length} guardados`;
   $("foot").hidden = false;
-  run();
+  run(y);
 }
 
 // --- sincronizar con el Mac: al abrir la app, si esta vinculada ---
@@ -958,15 +1060,15 @@ function sync(onProgress) {
         } catch { error = true; }
       }
       if (r) {
-        await load();
+        await load(scrollY);
         status.textContent = `Del Mac: ${fmt(r.posts)} guardados nuevos, ${fmt(r.covers)} portadas. ` + status.textContent;
-      } else if (/^Trayendo/.test(status.textContent)) run();
+      } else if (/^Trayendo/.test(status.textContent)) run(scrollY);
       if (extra?.gone) status.textContent = "Tu Mac cambió la llave: este móvil se ha desconectado. Escanea el código nuevo.";
       else if (extra?.pending && !r) status.textContent = "Tu Mac aún está subiendo tus guardados. Vuelve a abrir la app en un rato.";
-      if (error && !r) { run(); return { error: true }; }  // sin red o sin paquetes: se queda lo que habia
+      if (error && !r) { run(scrollY); return { error: true }; }  // sin red o sin paquetes: se queda lo que habia
       return r || extra;
     } catch {
-      run();
+      run(scrollY);
       return { error: true };
     } finally { syncing = null; }
   })();
@@ -1057,8 +1159,12 @@ $("scan-mac").addEventListener("click", async () => {
 async function main() {
   rules = makeRules(await (await fetch("rules-data.json")).json());
   const params = new URLSearchParams(location.search);
-  q.value = params.get("q") || "";
-  cat = params.get("cat");
+  // donde la dejaste, salvo que el enlace abra otra carpeta
+  const guardado = leerEstado();
+  const est = !params.has("cat") || params.get("cat") === guardado.cat ? guardado : {};
+  q.value = params.has("q") ? params.get("q") : est.q || "";
+  cat = params.get("cat") || est.cat || null;
+  sub = est.sub || null;
   // enlace del QR (#k=clave): se guarda y se quita de la barra de direcciones
   if (location.hash.startsWith("#k=")) {
     store.setSyncKey(location.hash);
@@ -1071,7 +1177,8 @@ async function main() {
     conectado = store.setBuzon(location.hash);
     history.replaceState(history.state, "", location.pathname + location.search);
   }
-  await load();
+  await load(est.y);
+  if (Number.isInteger(est.feed)) abrirFeed(est.feed);
   if (conectado) { macButton(); mac.showModal(); await linked(); return; }
   if (location.hash.length > 1) openPost(location.hash.slice(1), false);
   let checked = null;
@@ -1079,8 +1186,8 @@ async function main() {
   if (mine && !checked) {
     const n = await store.checkCovers((i, t) => { status.textContent = `Revisando portadas… ${fmt(i)} de ${fmt(t)}`; }).catch(() => -1);
     try { if (n >= 0) localStorage.setItem("guardados.covers.v2", "1"); } catch {}
-    if (n > 0) await load();
-    else run();
+    if (n > 0) await load(scrollY);
+    else run(scrollY);
   }
   sync();
 }
