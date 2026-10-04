@@ -205,17 +205,11 @@ function pintarInicio() {
   const n = {};
   for (const p of ix.posts) for (const c of p.cat) if (c !== "ideas") (n[c] ||= []).push(p);
   Object.keys(n).sort((a, b) => (a === "otros") - (b === "otros") || n[b].length - n[a].length).forEach(c => g.set(c, n[c]));
-  // Todos y las redes, al final: lo primero son tus carpetas de verdad
-  const orden = [...g].filter(([c, ps]) => ps.length && !["todo", ...SRC].includes(c)).concat([...g].filter(([c]) => ["todo", ...SRC].includes(c)));
-  // primero TUS colecciones de Instagram, tal cual; debajo, las carpetas automaticas
-  const cols = new Map();
-  for (const p of ix.posts) for (const n of p.col || []) (cols.get(n) || cols.set(n, []).get(n)).push(p);
+  // lo mismo y en el mismo orden que el menu (Nacho, 04/10/2026): Todos, Instagram, TikTok, Ideas y por tamano.
+  // Sin las colecciones de Instagram ("Sitios con Nacho", "Comidas para Sofi"...): siguen mandando en que carpeta va cada video
   const used = new Set();
-  const suyas = [...cols].sort((a, b) => b[1].length - a[1].length)
-    .map(([n, ps]) => carpetaHTML(`data-carpeta="col:${esc(n)}"`, n, ps.length, "src:instagram", portadaDe(ps, used))).join("");
-  const seccion = t => `<li class="seccion"><h2>${t}</h2></li>`;
-  grid.innerHTML = (suyas ? seccion("Tus colecciones de Instagram") + suyas + seccion("Carpetas automáticas") : "")
-    + orden.map(([c, ps]) => carpetaHTML(`data-carpeta="${c}"`, label(c), ps.length, c, portadaDe(ps, used))).join("");
+  grid.innerHTML = [...g].filter(([, ps]) => ps.length)
+    .map(([c, ps]) => carpetaHTML(`data-carpeta="${c}"`, c === "todo" ? "Todos" : label(c), ps.length, c, portadaDe(ps, used))).join("");
   hydrate(grid);
 }
 grid.addEventListener("click", e => {
@@ -814,7 +808,7 @@ function feedMas(hasta = 0) {
 // el video que ocupa la pantalla: se apunta (para volver a el) y, cerca del final, se pintan mas
 const feedVer = new IntersectionObserver(es => {
   for (const e of es) if (e.isIntersecting) {
-    if (+e.target.dataset.i !== feedI || !feedBox.querySelector(".s-media")) { feedI = +e.target.dataset.i; reproducir(); }
+    if (+e.target.dataset.i !== feedI || !feedBox.querySelector(".s-media, .slide.sin-video")) { feedI = +e.target.dataset.i; reproducir(); }
     if (feedI > feedN - 4) feedMas();
     guardarEstado();
   }
@@ -834,20 +828,48 @@ $("tab-feed").addEventListener("click", () => {
   // empieza por el primer video que tenias a la vista en la rejilla
   const visible = [...grid.querySelectorAll(".card")].find(b => b.getBoundingClientRect().bottom > 120);
   const i = visible ? results.findIndex(r => r.p.id === visible.dataset.id) : 0;
+  // desbloquear el reproductor dentro de este toque, aunque el primer video sea un TikTok o una foto
+  const v = videoFeed(); v.muted = false; v.play().catch(() => {});
   abrirFeed(Math.max(0, i));
+  reproducir();  // dentro del toque: asi iOS deja empezar con sonido
 });
-// un <video> nuevo por cada pantalla (reutilizar uno y moverlo de sitio lo dejaba en negro).
-// La primera vez arranca sin sonido: iOS no deja empezar con sonido sin tocar. Tocar el altavoz lo activa
-// y se intenta con sonido en los siguientes; si iOS no deja, sigue sin sonido y el boton lo dice.
-let sonido = false, feedVideo = null;
+// Un solo <video> para todo el feed, creado y arrancado DENTRO del toque en «Deslizar»: iOS solo deja sonar
+// con sonido a un video que empezo con un toque, y si luego se le cambia el video conserva el permiso
+// (uno nuevo por pantalla empezaria siempre en silencio). Si iOS no deja (la app reabierta sola, sin toque),
+// arranca en silencio y el primer toque en la pantalla pone el sonido.
+let sonido = true, feedVideo = null, forzado = false;  // forzado: en silencio porque iOS no dejo, no porque lo quitaras
 const tiktok = (s, msg) => s.querySelector("iframe.s-media")?.contentWindow?.postMessage({ type: msg, value: true, "x-tiktok-player": true }, "*");
 function botonesSonido() {
-  for (const b of feedBox.querySelectorAll("[data-sonido]")) b.innerHTML = `${sonido ? SON_ICO : MUDO_ICO}<span>${sonido ? "Sonido" : "Silencio"}</span>`;
+  const on = sonido && !forzado;
+  for (const b of feedBox.querySelectorAll("[data-sonido]")) b.innerHTML = `${on ? SON_ICO : MUDO_ICO}<span>${on ? "Sonido" : "Silencio"}</span>`;
+}
+function videoFeed() {
+  if (feedVideo) return feedVideo;
+  const v = feedVideo = document.createElement("video");
+  v.className = "s-media"; v.playsInline = true; v.loop = true; v.preload = "auto";
+  v.setAttribute("playsinline", ""); v.setAttribute("webkit-playsinline", "");
+  v.addEventListener("playing", () => v.closest(".slide")?.classList.replace("cargando", "sonando") || v.closest(".slide")?.classList.add("sonando"));
+  v.addEventListener("error", () => {
+    const s = v.closest(".slide"), src = v.getAttribute("src");
+    if (!s || !src) return;
+    // Instagram frena a veces al servidor (429): se reintenta dos veces antes de dar el video por perdido
+    const n = +(v.dataset.intentos || 0);
+    if (n < 2) {
+      v.dataset.intentos = n + 1;
+      return setTimeout(() => {
+        if (v.closest(".slide") !== s) return;
+        v.src = src.split("?")[0] + "?r=" + (n + 1);
+        v.play().catch(() => {});
+      }, 1500 + 1500 * n);
+    }
+    s.classList.remove("cargando"); s.classList.add("sin-video"); v.remove();
+  });
+  return v;
 }
 function quitarMedia() {
-  feedVideo?.pause(); feedVideo = null;
-  feedBox.querySelectorAll(".s-media").forEach(m => { m.removeAttribute("src"); m.remove(); });
-  feedBox.querySelectorAll(".sonando, .pausado").forEach(s => s.classList.remove("sonando", "pausado"));
+  if (feedVideo) { feedVideo.pause(); feedVideo.removeAttribute("src"); feedVideo.remove(); }
+  feedBox.querySelectorAll("iframe.s-media").forEach(m => m.remove());
+  feedBox.querySelectorAll(".sonando, .pausado, .cargando").forEach(s => s.classList.remove("sonando", "pausado", "cargando"));
 }
 function reproducir() {
   quitarMedia();
@@ -861,14 +883,29 @@ function reproducir() {
     return;
   }
   if (!p.v) return s.classList.add("sin-video");  // foto o carrusel: nada que reproducir
-  const v = feedVideo = Object.assign(document.createElement("video"), { className: "s-media", playsInline: true, loop: true, muted: !sonido, preload: "auto" });
-  v.setAttribute("playsinline", "");
-  v.addEventListener("playing", () => s.classList.add("sonando"));
-  v.addEventListener("error", () => { if (v.getAttribute("src")) { s.classList.add("sin-video"); v.remove(); } });
+  const v = videoFeed();
   s.querySelector(".s-fondo").after(v);
+  s.classList.add("cargando");
+  v.dataset.intentos = 0;
+  v.muted = !sonido;
   v.src = `${BUZON_URL}/video/ig/${encodeURIComponent(p.id)}`;
-  v.play().catch(() => { if (v !== feedVideo) return; v.muted = true; if (sonido) { sonido = false; botonesSonido(); } v.play().catch(() => {}); });
+  v.play().catch(e => {
+    if (e?.name !== "NotAllowedError" || v.closest(".slide") !== s) return;  // AbortError: ya se cambio de video
+    v.muted = true; forzado = true; botonesSonido();
+    v.play().catch(() => {});
+  });
 }
+// si iOS lo dejo en silencio, el siguiente toque en la pantalla pone el sonido (un toque si cuenta como permiso)
+feedBox.addEventListener("click", e => {
+  if (!forzado || e.target.closest("[data-sonido]")) return;
+  forzado = false;
+  if (sonido && feedVideo?.isConnected) {
+    if (e.target.closest(".s-tap, [data-play]")) e.stopPropagation();  // tocar el video aqui es para el sonido, no para pausar
+    feedVideo.muted = false;
+    feedVideo.play().catch(() => { feedVideo.muted = true; forzado = true; botonesSonido(); });
+  }
+  botonesSonido();
+}, true);
 function pausar(s) {
   const parar = s.classList.contains("sonando") && !s.classList.contains("pausado");  // aun sin arrancar: arrancar
   s.classList.toggle("pausado", parar);
@@ -876,7 +913,7 @@ function pausar(s) {
   else tiktok(s, parar ? "pause" : "play");
 }
 function cambiarSonido() {
-  sonido = !sonido;
+  sonido = forzado ? true : !sonido; forzado = false;
   if (feedVideo) { feedVideo.muted = !sonido; if (sonido) feedVideo.play().catch(() => {}); }
   const s = feedBox.querySelector(`.slide[data-i="${feedI}"]`);
   if (s) tiktok(s, sonido ? "unMute" : "mute");
@@ -885,7 +922,7 @@ function cambiarSonido() {
 feedDlg.addEventListener("close", quitarMedia);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) feedVideo?.pause();
-  else if (feedDlg.open && feedVideo && !feedVideo.closest(".pausado")) feedVideo.play().catch(() => {});
+  else if (feedDlg.open && feedVideo?.isConnected && !feedVideo.closest(".pausado")) feedVideo.play().catch(() => {});
 });
 $("feed-volver").addEventListener("click", () => history.state?.feed ? history.back() : feedDlg.close());
 feedDlg.addEventListener("cancel", e => { e.preventDefault(); $("feed-volver").click(); });
@@ -895,7 +932,7 @@ feedBox.addEventListener("click", e => {
   if (!p) return;
   const v = e.target.closest("[data-ver]");
   if (e.target.closest("[data-sonido]")) cambiarSonido();
-  else if (e.target.closest("[data-play]") && s.classList.contains("sin-video")) open(p.url, "_blank", "noopener");
+  else if (e.target.closest("[data-play]") && s.classList.contains("sin-video")) Object.assign(document.createElement("a"), { href: p.url, target: "_blank", rel: "noopener" }).click();
   else if (e.target.closest(".s-tap, [data-play]")) pausar(s);
   else if (v) abrirMapa(p.lug[+v.dataset.ver]);
   else if (e.target.closest("[data-mapa]")) abrirMapa(p.lug[0]);
