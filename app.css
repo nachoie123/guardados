@@ -469,8 +469,19 @@ main { padding: 8px 16px calc(var(--safe-b) + 84px); max-width: 1100px; margin: 
 .slide::before { top: 0; height: calc(var(--safe-t) + 110px); background: linear-gradient(rgb(0 0 0 / .5), transparent); }
 .slide::after { bottom: 0; height: 62%; background: linear-gradient(transparent, rgb(0 0 0 / .45) 35%, rgb(0 0 0 / .85)); }
 .s-play { position: absolute; z-index: 1; left: 50%; top: 42%; width: 76px; height: 76px; margin: -38px 0 0 -38px; display: grid; place-items: center; border-radius: 50%;
-  background: rgb(0 0 0 / .32); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); color: #fff; transition: transform var(--t-fast) ease-out; }
+  background: rgb(0 0 0 / .45); color: #fff; transition: transform var(--t-fast) ease-out; }
+.s-play { border: 0; padding: 0; }
 .s-play svg { width: 34px; height: 34px; margin-left: 4px; }
+/* el video encima de la portada; se ve cuando ya tiene imagen */
+.s-media { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border: 0; background: transparent; }
+.slide:not(.sonando) video.s-media { opacity: 0; }
+.s-tap { position: absolute; inset: 0; z-index: 1; }
+/* TikTok pinta su cabecera (autor) arriba: se sube el reproductor para que no tape el boton de volver */
+iframe.s-media { top: -64px; height: calc(100% + 64px); }
+.s-play { transition: opacity var(--t-med) ease, transform var(--t-fast) ease-out; }
+.slide.sonando:not(.pausado) .s-play { opacity: 0; pointer-events: none; }
+.s-aviso { display: none; position: absolute; z-index: 1; left: 24px; right: 24px; top: calc(42% + 50px); margin: 0; text-align: center; font-size: 14px; font-weight: 600; text-shadow: 0 1px 4px rgb(0 0 0 / .7); }
+.slide.sin-video .s-aviso { display: block; }
 .s-play:active { transform: scale(.92); }
 .s-info { position: absolute; z-index: 1; left: 16px; right: 84px; bottom: calc(var(--safe-b) + 22px); text-shadow: 0 1px 3px rgb(0 0 0 / .5); }
 .s-who { margin: 0 0 4px; font-size: 14px; font-weight: 600; opacity: .9; }
@@ -478,8 +489,8 @@ main { padding: 8px 16px calc(var(--safe-b) + 84px); max-width: 1100px; margin: 
 .s-lug { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; text-shadow: none; }
 .s-lug li { display: flex; align-items: center; gap: 8px; }
 .s-lug button { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 6px 12px 6px 8px; border: 0; border-radius: 14px; text-align: left;
-  background: rgb(255 255 255 / .16); -webkit-backdrop-filter: blur(16px) saturate(1.4); backdrop-filter: blur(16px) saturate(1.4); color: #fff; }
-.s-lug button:active { background: rgb(255 255 255 / .26); }
+  background: rgb(28 25 23 / .62); color: #fff; }
+.s-lug button:active { background: rgb(28 25 23 / .8); }
 .s-ico { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 10px; background: rgb(255 255 255 / .9); font-size: 17px; }
 .s-l { min-width: 0; display: grid; }
 .s-l b { font-size: 15px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -488,9 +499,9 @@ main { padding: 8px 16px calc(var(--safe-b) + 84px); max-width: 1100px; margin: 
 .s-mas { font-size: 13px; opacity: .85; text-shadow: 0 1px 3px rgb(0 0 0 / .5); }
 .s-acc { position: absolute; z-index: 1; right: 10px; bottom: calc(var(--safe-b) + 22px); display: grid; gap: 16px; }
 .s-btn { display: grid; justify-items: center; gap: 4px; padding: 0; border: 0; background: none; color: #fff; font-size: 12px; font-weight: 600; text-decoration: none; text-shadow: 0 1px 3px rgb(0 0 0 / .6); }
-.s-btn svg { box-sizing: content-box; width: 24px; height: 24px; padding: 12px; border-radius: 50%; background: rgb(0 0 0 / .32); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); transition: transform var(--t-fast) ease-out; }
+.s-btn svg { box-sizing: content-box; width: 24px; height: 24px; padding: 12px; border-radius: 50%; background: rgb(0 0 0 / .45); transition: transform var(--t-fast) ease-out; }
 .s-btn:active svg { transform: scale(.9); }
-.feed-volver { --surface: #000; color: #fff; }
+.feed-volver { background: rgb(0 0 0 / .45); -webkit-backdrop-filter: none; backdrop-filter: none; color: #fff; box-shadow: none; }
 @media (prefers-reduced-transparency: reduce) {
-  .s-lug button, .s-play, .s-btn svg { background: rgb(28 25 23 / .92); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .s-lug button, .s-play, .s-btn svg { background: rgb(28 25 23 / .92); }
 }

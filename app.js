@@ -2,6 +2,7 @@ import { buildIndex, search, norm } from "./search.js";
 import { makeRules } from "./rules.js";
 import * as store from "./store.js";
 import { abierto } from "./horario.js";
+import { BUZON_URL } from "./buzon-config.js";
 
 const CATS = {
   tecnologia: ["Tecnología", "#1D4ED8", "#0F172A"],
@@ -771,13 +772,16 @@ function verEnMapa(l) {
 }
 
 // --- Deslizar: los videos de donde estes (carpeta, subcarpeta o busqueda), uno por pantalla, como Reels ---
-// Instagram no deja reproducir sus reels dentro de otra web (el reproductor incrustado solo dice
-// "Ver en Instagram"): se ve la portada en grande con sus sitios, y "Ver" abre el reel en la app.
+// Se reproduce solo el de la pantalla. Instagram: el Worker del buzon saca el MP4 de su reproductor
+// publico (/video/ig/<code>); si Instagram no lo deja (musica con derechos, ~1 de cada 4) queda la
+// portada y el boton abre el reel en Instagram. TikTok: su reproductor oficial (player/v1).
 const feedDlg = $("feed"), feedBox = $("feed-scroll");
 let feedLista = [], feedN = 0, feedI = 0;
 const FEED_LOTE = 12;
 const PLAY_ICO = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" class="fill"/></svg>';
 const MAPA_ICO = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4 3 6.5v13.5l6-2.5 6 2.5 6-2.5V4l-6 2.5z"/><path d="M9 4v13.5M15 6.5V20"/></svg>';
+const SON_ICO = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
+const MUDO_ICO = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="m16 9.5 5 5M21 9.5l-5 5"/></svg>';
 const INFO_ICO = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.8" r="1.1" class="fill"/></svg>';
 function feedSlide(p, i) {
   const ls = p.lug || [], desde = yo?.getLngLat().toArray();
@@ -788,9 +792,12 @@ function feedSlide(p, i) {
   const tt = p.src === "tiktok";
   return `<section class="slide" data-i="${i}" data-id="${p.id}">
     <div class="s-fondo">${coverHTML(p)}</div>
-    <a class="s-play" href="${p.url}" target="_blank" rel="noopener" aria-label="${tt ? "Ver en TikTok" : "Ver en Instagram"}">${PLAY_ICO}</a>
+    <div class="s-tap" aria-hidden="true"></div>
+    <button type="button" class="s-play" data-play aria-label="Reproducir">${PLAY_ICO}</button>
+    <p class="s-aviso">Instagram no deja ver este vídeo fuera de su app</p>
     <div class="s-info"><p class="s-who">@${esc(p.u)}</p><h2>${esc(p.t)}</h2>${lugs ? `<ul class="s-lug">${lugs}</ul>` : ""}</div>
     <div class="s-acc">
+      <button type="button" class="s-btn" data-sonido aria-label="Sonido">${sonido ? SON_ICO : MUDO_ICO}<span>${sonido ? "Sonido" : "Silencio"}</span></button>
       <a class="s-btn" href="${p.url}" target="_blank" rel="noopener">${PLAY_ICO}<span>Ver</span></a>
       ${ls.length ? `<button type="button" class="s-btn" data-mapa>${MAPA_ICO}<span>Mapa</span></button>` : ""}
       <button type="button" class="s-btn" data-ficha>${INFO_ICO}<span>Ficha</span></button>
@@ -807,7 +814,7 @@ function feedMas(hasta = 0) {
 // el video que ocupa la pantalla: se apunta (para volver a el) y, cerca del final, se pintan mas
 const feedVer = new IntersectionObserver(es => {
   for (const e of es) if (e.isIntersecting) {
-    feedI = +e.target.dataset.i;
+    if (+e.target.dataset.i !== feedI || !feedBox.querySelector(".s-media")) { feedI = +e.target.dataset.i; reproducir(); }
     if (feedI > feedN - 4) feedMas();
     guardarEstado();
   }
@@ -829,6 +836,57 @@ $("tab-feed").addEventListener("click", () => {
   const i = visible ? results.findIndex(r => r.p.id === visible.dataset.id) : 0;
   abrirFeed(Math.max(0, i));
 });
+// un <video> nuevo por cada pantalla (reutilizar uno y moverlo de sitio lo dejaba en negro).
+// La primera vez arranca sin sonido: iOS no deja empezar con sonido sin tocar. Tocar el altavoz lo activa
+// y se intenta con sonido en los siguientes; si iOS no deja, sigue sin sonido y el boton lo dice.
+let sonido = false, feedVideo = null;
+const tiktok = (s, msg) => s.querySelector("iframe.s-media")?.contentWindow?.postMessage({ type: msg, value: true, "x-tiktok-player": true }, "*");
+function botonesSonido() {
+  for (const b of feedBox.querySelectorAll("[data-sonido]")) b.innerHTML = `${sonido ? SON_ICO : MUDO_ICO}<span>${sonido ? "Sonido" : "Silencio"}</span>`;
+}
+function quitarMedia() {
+  feedVideo?.pause(); feedVideo = null;
+  feedBox.querySelectorAll(".s-media").forEach(m => { m.removeAttribute("src"); m.remove(); });
+  feedBox.querySelectorAll(".sonando, .pausado").forEach(s => s.classList.remove("sonando", "pausado"));
+}
+function reproducir() {
+  quitarMedia();
+  const s = feedBox.querySelector(`.slide[data-i="${feedI}"]`), p = feedLista[feedI];
+  if (!s || !p || s.classList.contains("sin-video")) return;
+  if (p.src === "tiktok") {
+    const f = Object.assign(document.createElement("iframe"), { className: "s-media", allow: "autoplay; encrypted-media; fullscreen",
+      src: `https://www.tiktok.com/player/v1/${p.id.slice(3)}?autoplay=1&loop=1&controls=0&music_info=0&description=0&rel=0&native_context_menu=0&closed_caption=0` });
+    f.addEventListener("load", () => { s.classList.add("sonando"); if (sonido) setTimeout(() => tiktok(s, "unMute"), 600); });
+    s.querySelector(".s-fondo").after(f);
+    return;
+  }
+  if (!p.v) return s.classList.add("sin-video");  // foto o carrusel: nada que reproducir
+  const v = feedVideo = Object.assign(document.createElement("video"), { className: "s-media", playsInline: true, loop: true, muted: !sonido, preload: "auto" });
+  v.setAttribute("playsinline", "");
+  v.addEventListener("playing", () => s.classList.add("sonando"));
+  v.addEventListener("error", () => { if (v.getAttribute("src")) { s.classList.add("sin-video"); v.remove(); } });
+  s.querySelector(".s-fondo").after(v);
+  v.src = `${BUZON_URL}/video/ig/${encodeURIComponent(p.id)}`;
+  v.play().catch(() => { if (v !== feedVideo) return; v.muted = true; if (sonido) { sonido = false; botonesSonido(); } v.play().catch(() => {}); });
+}
+function pausar(s) {
+  const parar = s.classList.contains("sonando") && !s.classList.contains("pausado");  // aun sin arrancar: arrancar
+  s.classList.toggle("pausado", parar);
+  if (feedVideo && s.contains(feedVideo)) parar ? feedVideo.pause() : feedVideo.play().catch(() => {});
+  else tiktok(s, parar ? "pause" : "play");
+}
+function cambiarSonido() {
+  sonido = !sonido;
+  if (feedVideo) { feedVideo.muted = !sonido; if (sonido) feedVideo.play().catch(() => {}); }
+  const s = feedBox.querySelector(`.slide[data-i="${feedI}"]`);
+  if (s) tiktok(s, sonido ? "unMute" : "mute");
+  botonesSonido();
+}
+feedDlg.addEventListener("close", quitarMedia);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) feedVideo?.pause();
+  else if (feedDlg.open && feedVideo && !feedVideo.closest(".pausado")) feedVideo.play().catch(() => {});
+});
 $("feed-volver").addEventListener("click", () => history.state?.feed ? history.back() : feedDlg.close());
 feedDlg.addEventListener("cancel", e => { e.preventDefault(); $("feed-volver").click(); });
 feedDlg.addEventListener("close", guardarEstado);
@@ -836,9 +894,13 @@ feedBox.addEventListener("click", e => {
   const s = e.target.closest(".slide"), p = s && ix.posts.find(x => x.id === s.dataset.id);
   if (!p) return;
   const v = e.target.closest("[data-ver]");
-  if (v) abrirMapa(p.lug[+v.dataset.ver]);
+  if (e.target.closest("[data-sonido]")) cambiarSonido();
+  else if (e.target.closest("[data-play]") && s.classList.contains("sin-video")) open(p.url, "_blank", "noopener");
+  else if (e.target.closest(".s-tap, [data-play]")) pausar(s);
+  else if (v) abrirMapa(p.lug[+v.dataset.ver]);
   else if (e.target.closest("[data-mapa]")) abrirMapa(p.lug[0]);
   else if (e.target.closest("[data-ficha]")) openPost(p.id);
+  if (e.target.closest("[data-ver], [data-mapa], [data-ficha], .s-ir, .s-btn[href]") && !s.classList.contains("pausado")) pausar(s);
 });
 
 // ficha: la lista de sitios del video (borrar, anadir, volver a investigar)
