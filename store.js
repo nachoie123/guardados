@@ -1,0 +1,571 @@
+// Tus guardados, en tu navegador (IndexedDB). Sin servidor: el fichero que baja
+// el marcador se procesa aqui mismo (titulo y categoria con rules.js, portada
+// descargada y reducida) y no sale del dispositivo.
+//
+// posts:  { id, t, u, n, c, tr, cat, d, v, p, url, img } — el formato de siempre
+// covers: Blob JPEG por id
+
+const DB = "guardados", VER = 1;
+let dbp;
+
+function db() {
+  return dbp ||= new Promise((res, rej) => {
+    const r = indexedDB.open(DB, VER);
+    r.onupgradeneeded = () => {
+      r.result.createObjectStore("posts", { keyPath: "id" });
+      r.result.createObjectStore("covers");
+    };
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+
+const done = tx => new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = tx.onabort = () => rej(tx.error); });
+const req = r => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+
+// Lo importado (un fichero, un enlace #conectar= de otra persona) no es de fiar: de aqui salen ids, enlaces, carpetas y
+// sitios que se meten en el HTML, y en esta web viven la llave y la clave de Gemini. Todo lo que se pinta pasa por aqui.
+const ID = /^[\w-]{1,64}$/, FOTO = /^[\w~-]{1,80}$/;
+const txt = v => typeof v === "string" ? v : v == null ? "" : String(v);
+const nombre = v => txt(v).replace(/[<>"]/g, "").slice(0, 80);
+const num = v => Number.isFinite(+v) ? +v : 0;
+const lista = v => Array.isArray(v) ? v : [];
+const deLaWeb = u => { try { const x = new URL(u); return x.protocol === "https:" && !x.username && /(^|\.)(instagram|tiktok)\.com$/.test(x.hostname) ? x.href : ""; } catch { return ""; } };
+const sitio = l => ({ ...l, n: txt(l.n), a: txt(l.a), ci: txt(l.ci), h: txt(l.h), t: nombre(l.t), f: FOTO.test(l.f) ? l.f : "", lat: num(l.lat), lng: num(l.lng) });
+function seguro(p) {
+  if (!p || typeof p.id !== "string" || !ID.test(p.id)) return null;
+  const carpetas = v => lista(v).map(nombre).filter(c => c && !(c in Object.prototype));
+  const q = { ...p, t: txt(p.t), u: txt(p.u), n: txt(p.n), c: txt(p.c), tr: txt(p.tr), kw: txt(p.kw), que: txt(p.que),
+    ciudad: txt(p.ciudad), repo: txt(p.repo), src: p.src === "tiktok" ? "tiktok" : "instagram", cat: carpetas(p.cat), sub: carpetas(p.sub),
+    col: carpetas(p.col), dup: lista(p.dup).filter(d => ID.test(d)), st: p.st === "haciendo" || p.st === "hecha" ? p.st : "",
+    d: num(p.d) || null, p: num(p.p), dur: num(p.dur),
+    lug: lista(p.lug).filter(l => l && typeof l === "object").map(sitio) };
+  if (!q.cat.length) q.cat = ["otros"];
+  q.url = deLaWeb(p.url) || `https://www.instagram.com/p/${p.id}/`;
+  return q;
+}
+
+export async function loadPosts() {
+  try {
+    const d = await db();
+    const posts = await req(d.transaction("posts").objectStore("posts").getAll());
+    return posts.map(seguro).filter(Boolean).sort((a, b) => (b.d || 0) - (a.d || 0));
+  } catch { return []; }
+}
+
+// Las portadas se guardan como bytes (ArrayBuffer), no como Blob: en el iPhone,
+// sobre todo abierta desde la pantalla de inicio, WebKit pierde el fichero que
+// hay detras de un Blob guardado ("WebKitBlobResource error 1") y la portada sale
+// en blanco. Las viejas (Blob) se pasan a bytes al leerlas; si ya no se pueden
+// leer -> null, y quien llama la marca para volver a bajarla (markNoCover).
+const jpeg = v => new Blob([v], { type: "image/jpeg" });
+export async function getCover(id) {
+  const d = await db();
+  const v = await req(d.transaction("covers").objectStore("covers").get(id));
+  if (!v) return null;
+  if (!(v instanceof Blob)) return jpeg(v);
+  const buf = await v.arrayBuffer();  // lanza si WebKit perdio el fichero
+  if (!buf.byteLength) throw new Error("vacia");
+  const tx = d.transaction("covers", "readwrite");
+  tx.objectStore("covers").put(buf, id);
+  await done(tx);
+  return jpeg(buf);
+}
+
+export async function markNoCover(ids) {
+  const d = await db();
+  const tx = d.transaction(["posts", "covers"], "readwrite");
+  for (const id of ids) {
+    const row = await req(tx.objectStore("posts").get(id));
+    if (row) tx.objectStore("posts").put({ ...row, img: false });
+    tx.objectStore("covers").delete(id);
+  }
+  await done(tx);
+}
+
+// Una pasada por todas: Blob -> bytes, y las ilegibles a reparar. Devuelve cuantas estaban rotas.
+export async function checkCovers(onProgress = () => {}) {
+  const d = await db();
+  const ids = await req(d.transaction("covers").objectStore("covers").getAllKeys());
+  const bad = [];
+  for (let i = 0; i < ids.length; i += 50) {
+    for (const id of ids.slice(i, i + 50)) {
+      try { if (!(await getCover(id))) bad.push(id); } catch { bad.push(id); }
+    }
+    onProgress(Math.min(i + 50, ids.length), ids.length);
+  }
+  if (bad.length) await markNoCover(bad);
+  return bad.length;
+}
+
+export async function clearAll() {
+  const d = await db();
+  const tx = d.transaction(["posts", "covers"], "readwrite");
+  tx.objectStore("posts").clear(); tx.objectStore("covers").clear();
+  await done(tx);
+}
+
+// --- importar ---
+
+// Acepta: el fichero del marcador ({app:"guardados", items}), el saved_all.json
+// de pull.js ({items}) y el export oficial de Instagram (saved_posts.json:
+// solo cuenta + enlace + fecha, sin caption ni portada). Y el posts.json de
+// export.py, que trae ademas la transcripcion ("tr") y las palabras clave
+// ocultas ("kw"): asi Nacho enriquece lo que ya importo con el marcador.
+export function parseFile(json) {
+  if (Array.isArray(json?.posts)) {
+    return {
+      kind: "export", pulledAt: json.built || null,
+      items: json.posts.filter(p => p?.id).map(p => ({
+        code: p.id, user: p.u || "", name: p.n || "", caption: p.c || "", taken_at: p.d || null,
+        video: !!p.v, plays: p.p || 0, tr: p.tr || "", kw: p.kw || "",
+        src: p.src || "instagram", url: p.url || null,
+        ideas: (p.cat || []).includes("ideas"),
+        dur: p.dur || 0, que: p.que || "", dup: p.dup || [],
+        cat: p.cat || null, sub: p.sub || [], ciudad: p.ciudad || "", lug: p.lug || null, col: p.col || null,  // carpetas de Gemini (carpetas.py)  // carpeta Ideas: la decide el Mac (ideas.py), no rules.js
+        // mis-guardados.json (export.py --mio) trae la portada dentro, en base64
+        thumb: p.cov || null,
+      })),
+    };
+  }
+  if (Array.isArray(json?.items)) {
+    return {
+      kind: json.app === "guardados" ? "marcador" : "pull",
+      pulledAt: json.pulled_at || null,
+      src: json.src || "instagram",
+      items: json.items.filter(i => i?.code).map(i => ({
+        code: i.code, user: i.user || "", name: i.name || "", caption: i.caption || "",
+        taken_at: i.taken_at || null, video: i.type === 2, plays: i.plays || 0, thumb: i.thumb || null,
+        // TikTok (bookmarklet-tiktok.js): enlace propio y subtitulos automaticos en tr
+        src: i.src || "instagram", url: i.url || null, tr: i.tr || "",
+      })),
+    };
+  }
+  // descarga oficial de TikTok (user_data_tiktok.json): la lista de favoritos
+  // cambia de sitio segun la version, asi que se busca por nombre
+  const find = (o, d = 0) => o && typeof o === "object" && d < 5 &&
+    (Array.isArray(o.FavoriteVideoList) ? o.FavoriteVideoList : Object.values(o).reduce((a, v) => a || find(v, d + 1), null));
+  const ttOfficial = !Array.isArray(json) && find(json);
+  if (ttOfficial) {
+    const items = [];
+    for (const e of ttOfficial) {
+      const link = e?.Link || e?.link || "";
+      const m = link.match(/\/(?:video|photo|v)\/(\d{8,})/);
+      const t = Date.parse((e.Date || e.date || "").replace(" ", "T") + "Z");
+      if (m) items.push({ code: "tt_" + m[1], src: "tiktok", url: link, user: "", name: "", caption: "",
+        taken_at: isNaN(t) ? null : t / 1000, video: true, plays: 0, thumb: null });
+    }
+    return { kind: "oficial", src: "tiktok", pulledAt: null, items };
+  }
+  const official = json?.saved_saved_media || (Array.isArray(json) ? json : null);
+  if (official) {
+    const items = [];
+    for (const e of official) {
+      const s = e?.string_map_data?.["Saved on"] || Object.values(e?.string_map_data || {})[0];
+      const m = s?.href?.match(/instagram\.com\/(?:[\w.]+\/)?(?:p|reel|tv)\/([\w-]+)/);
+      if (m) items.push({ code: m[1], user: e.title || "", name: "", caption: "", taken_at: s.timestamp || null,
+        video: /\/reel\//.test(s.href), plays: 0, thumb: null });
+    }
+    return { kind: "oficial", pulledAt: null, items };
+  }
+  return null;
+}
+
+// Portada: la de Instagram, reducida a 270 px de ancho (≈15 KB). Los enlaces
+// caducan en unos 5 dias, por eso se bajan al importar y no al mirarlas.
+async function shrink(url) {
+  const r = await fetch(url, { mode: "cors", credentials: "omit" });
+  if (!r.ok) throw new Error(r.status);
+  const bmp = await createImageBitmap(await r.blob());
+  const w = Math.min(270, bmp.width), h = Math.round(bmp.height * w / bmp.width);
+  const cv = document.createElement("canvas");
+  cv.width = w; cv.height = h;
+  cv.getContext("2d").drawImage(bmp, 0, 0, w, h);
+  bmp.close?.();
+  return new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error("toBlob")), "image/jpeg", 0.72));
+}
+
+// La de mis-guardados.json ya viene reducida (base64 a secas): se guarda tal
+// cual, sin canvas (en Safari del iPhone, 2.000 canvas seguidos pueden fallar sin avisar).
+async function cover(t) {
+  if (/^https?:/.test(t)) return shrink(t);
+  const b64 = t.startsWith("data:") ? t.slice(t.indexOf(",") + 1) : t;
+  let u8;
+  if (Uint8Array.fromBase64) u8 = Uint8Array.fromBase64(b64);
+  else {
+    const bin = atob(b64);
+    u8 = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  }
+  return new Blob([u8], { type: "image/jpeg" });
+}
+
+// --- ficheros grandes, a trozos ---
+// mis-guardados.json pesa ~100 MB. Leido de golpe, la pestana pasa de 1 GB y
+// Safari del iPhone la mata a medias: las portadas que no llegaron a guardarse
+// se quedaban en degradado. export.py lo escribe con un post por linea ("lines":1)
+// y aqui se lee linea a linea, dos veces: primero los datos, luego las portadas.
+async function* lines(file) {
+  const rd = file.stream().pipeThrough(new TextDecoderStream()).getReader();
+  let buf = "";
+  for (;;) {
+    const { value, done } = await rd.read();
+    if (done) break;
+    buf += value;
+    let i;
+    while ((i = buf.indexOf("\n")) >= 0) { yield buf.slice(0, i); buf = buf.slice(i + 1); }
+  }
+  if (buf) yield buf;
+}
+const postLine = l => l.startsWith('{"id":') ? JSON.parse(l.endsWith(",") ? l.slice(0, -1) : l) : null;
+
+// Cualquier fichero: el de lineas, a trozos; el resto, como siempre.
+// Devuelve { parsed, result } o { parsed: null } si no es de guardados.
+export async function importFile(file, rules, onProgress) {
+  const head = await file.slice(0, 200).text();
+  if (!/^\{"built":[^\n]*"lines":1/.test(head) || !file.stream || typeof TextDecoderStream === "undefined") {
+    let parsed;
+    try { parsed = parseFile(JSON.parse(await file.text())); } catch { parsed = null; }
+    if (!parsed?.items.length) return { parsed: null };
+    return { parsed, result: await importItems(parsed, rules, onProgress) };
+  }
+  const posts = [];
+  for await (const l of lines(file)) {
+    const p = postLine(l);
+    if (p?.id) { p.cov = p.cov ? 1 : 0; posts.push(p); }  // la portada, en la segunda vuelta
+  }
+  const parsed = parseFile({ built: (JSON.parse(head.split("\n")[0] + "]}")).built, posts });
+  if (!parsed?.items.length) return { parsed: null };
+  const thumbs = async function* (want) {
+    for await (const l of lines(file)) {
+      const p = postLine(l);
+      if (p?.cov && want.has(p.id)) yield [p.id, p.cov];
+    }
+  };
+  return { parsed, result: await importItems(parsed, rules, onProgress, thumbs) };
+}
+
+// Fusiona con lo que ya hay (por code: el mismo post nunca sale dos veces).
+// onProgress(fase, hechos, total). thumbs(ids): de donde salen las portadas
+// (por defecto, del propio parsed; importFile las va leyendo del fichero).
+export async function importItems(parsed, rules, onProgress = () => {}, thumbs = null) {
+  const d = await db();
+  const old = new Map((await loadPosts()).map(p => [p.id, p]));
+  const posts = parsed.items.filter(i => typeof i.code === "string" && ID.test(i.code)).map(i => {
+    for (const k of ["caption", "tr", "kw", "user", "name"]) i[k] = txt(i[k]);
+    const prev = old.get(i.code);
+    // el export oficial no trae caption: no pisar uno que ya teniamos
+    const caption = i.caption || prev?.c || "";
+    const tr = i.tr || prev?.tr || "", kw = i.kw || prev?.kw || "";
+    let { display, cats } = rules.label(caption, tr, i.user || prev?.u || "");
+    // si el Mac ya lo clasifico con Gemini, manda eso; las reglas solo para lo importado a mano
+    const mac = i.cat?.filter(c => c !== "ideas");
+    if (mac?.length) cats = [...mac];
+    else if (prev?.sub?.length) cats = prev.cat.filter(c => c !== "ideas");
+    if (i.ideas ?? prev?.cat?.includes("ideas")) cats.push("ideas");
+    return {
+      id: i.code, t: display,
+      u: i.user || prev?.u || "", n: i.name || prev?.n || "", c: caption, tr, kw,
+      cat: cats, d: i.taken_at || prev?.d || null, v: i.video, p: i.plays || prev?.p || 0,
+      src: i.src || prev?.src || "instagram",
+      url: i.url || prev?.url || `https://www.instagram.com/p/${i.code}/`,
+      img: !!prev?.img, _thumb: i.thumb,
+      dur: i.dur || prev?.dur || 0, que: i.que || prev?.que || "",
+      dup: i.dup ?? prev?.dup ?? [],
+      col: i.col ?? prev?.col ?? [],  // colecciones de Instagram de Nacho
+      // sitios del mapa: si Nacho los toco en el movil (lugMio), no los pisa el Mac
+      lug: prev?.lugMio ? prev.lug : (i.lug ?? prev?.lug ?? []), lugMio: !!prev?.lugMio,
+      sub: i.sub?.length ? i.sub : (i.cat ? [] : prev?.sub || []), ciudad: i.ciudad || (i.cat ? "" : prev?.ciudad || ""),  // el mismo clip guardado desde otra cuenta (export.py)
+      // estado de la idea (pendiente / haciendo / hecha): solo vive en este movil, no lo pisa el Mac
+      st: prev?.st || "", repo: prev?.repo || "",
+    };
+  });
+
+  onProgress("posts", 0, posts.length);
+  let tx = d.transaction("posts", "readwrite");
+  for (const p of posts) { const { _thumb, ...row } = p; Object.assign(p, seguro(row)); tx.objectStore("posts").put(seguro(row)); }
+  await done(tx);
+
+  // portadas que faltan, de 6 en 6. Reimportar el mismo fichero solo rellena
+  // las que falten; las que fallan se reintentan una vez, de una en una.
+  const todo = new Map(posts.filter(p => p._thumb && !p.img).map(p => [p.id, p]));
+  thumbs ||= async function* () { for (const p of todo.values()) yield [p.id, p._thumb]; };
+  let n = 0, ok = 0, batch = [], failed = [];
+  const save = async (pairs, retry) => {
+    const got = await Promise.all(pairs.map(([p, t]) => cover(t).then(b => b.arrayBuffer()).then(b => [p, t, b], () => [p, t, null])));
+    const tx = d.transaction(["posts", "covers"], "readwrite");
+    for (const [p, t, b] of got) {
+      if (!b) { if (!retry) failed.push([p, t]); continue; }
+      const { _thumb, ...row } = p;
+      row.img = true; ok++;
+      tx.objectStore("covers").put(b, p.id);
+      tx.objectStore("posts").put(row);
+    }
+    await done(tx);
+  };
+  onProgress("portadas", 0, todo.size);
+  for await (const [id, t] of thumbs(new Set(todo.keys()))) {
+    const p = todo.get(id);
+    if (!p) continue;
+    p._thumb = null;  // que la memoria se vaya liberando
+    batch.push([p, t]);
+    if (batch.length < 6) continue;
+    await save(batch); n += batch.length; batch = [];
+    onProgress("portadas", n, todo.size);
+  }
+  if (batch.length) { await save(batch); n += batch.length; }
+  for (const f of failed) await save([f], true);
+  onProgress("portadas", todo.size, todo.size);
+  const total = (await loadPosts()).length;
+  return { imported: posts.length, isNew: posts.filter(p => !old.has(p.id)).length, covers: ok, missing: todo.size - ok, total };
+}
+
+// Copia de seguridad: lo mismo que importa (sin portadas, que se pueden rebajar)
+// estado de una idea: "", "haciendo" o "hecha" (+ enlace al repo opcional)
+export async function setEstado(id, st, repo) {
+  const d = await db();
+  const tx = d.transaction("posts", "readwrite");
+  const row = await req(tx.objectStore("posts").get(id));
+  if (row) tx.objectStore("posts").put({ ...row, st, repo: repo ?? row.repo ?? "" });
+  await done(tx);
+}
+
+export async function exportBackup() {
+  const posts = await loadPosts();
+  return new Blob([JSON.stringify({ app: "guardados", v: 1, backup: true, pulled_at: Date.now(),
+    items: posts.map(p => ({ code: p.id, user: p.u, name: p.n, caption: p.c, taken_at: p.d, type: p.v ? 2 : 1, plays: p.p,
+      src: p.src, url: p.url, tr: p.src === "tiktok" ? p.tr : undefined, st: p.st || undefined, repo: p.repo || undefined })) })],
+    { type: "application/json" });
+}
+
+// --- sincronizacion con el Mac (tools/sync-pack.py) ---
+// El Mac publica en sync/ paquetes cifrados (AES-GCM) con lo nuevo; la clave
+// llega una vez por el QR (#k=...) y se queda en este dispositivo. Aqui se baja
+// el indice, los datos si han cambiado y solo las portadas que falten.
+// SYNC_POSTS lleva version: si el codigo cambia como importa (v2 = carpetas de Gemini y
+// sitios, 29/09/2026), se reimporta una vez aunque el paquete ya se hubiera bajado con el
+// codigo viejo (que lo ordeno a su manera y lo marco como hecho).
+const SYNC_KEY = "guardados.sync", SYNC_POSTS = "guardados.sync.posts.v4";
+const ls = {
+  get: k => { try { return localStorage.getItem(k); } catch { return null; } },
+  set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} },
+};
+export const syncKey = () => ls.get(SYNC_KEY);
+// acepta la clave a secas o el enlace entero del QR
+// (&g= es la clave de Gemini de "Preguntame": va solo en el QR, nunca en el repo publico)
+export function setSyncKey(s) {
+  const m = (s || "").trim().match(/^(?:.*#k=)?([A-Za-z0-9_-]{43})(?:&g=([A-Za-z0-9._-]{20,200}))?$/);
+  if (!m) return false;
+  ls.set(SYNC_KEY, m[1]); ls.set(SYNC_POSTS, null);
+  if (m[2]) { ls.set(ASK_KEY, m[2]); ls.set(ASK_KEY + "2", null); }
+  return true;
+}
+
+async function unseal(k, buf) {
+  const raw = Uint8Array.from(atob(k.replace(/-/g, "+").replace(/_/g, "/") + "="), c => c.charCodeAt(0));
+  const key = await crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["decrypt"]);
+  return new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv: buf.slice(0, 12) }, key, buf.slice(12)));
+}
+const getBin = async f => {
+  const r = await fetch("sync/" + f, { cache: "no-store" });
+  if (!r.ok) throw new Error("sync " + r.status);
+  return new Uint8Array(await r.arrayBuffer());
+};
+
+// -> null si no hay nada nuevo; si no, { posts, covers } con lo que ha entrado
+export async function syncNow(rules, onProgress = () => {}) {
+  const k = syncKey();
+  if (!k) return null;
+  const ix = JSON.parse(new TextDecoder().decode(await unseal(k, await getBin("index.bin"))));
+  return pull(k, ix, getBin, SYNC_POSTS, rules, onProgress);
+}
+
+// Lo comun a los paquetes de Nacho (sync/) y al buzon de cada persona: los datos si
+// han cambiado (postsKey recuerda cual se bajo) y solo las portadas que falten.
+async function pull(k, ix, getBin, postsKey, rules, onProgress) {
+  let posts = 0, covers = 0;
+  if (ix.posts && ix.posts !== ls.get(postsKey)) {
+    onProgress("datos", 0, 1);
+    const gz = await unseal(k, await getBin(ix.posts));
+    const text = await new Response(new Blob([gz]).stream().pipeThrough(new DecompressionStream("gzip"))).text();
+    const r = await importItems(parseFile(JSON.parse(text)), rules);
+    posts = r.isNew;
+    ls.set(postsKey, ix.posts);
+  }
+  const rows = new Map((await loadPosts()).filter(p => !p.img).map(p => [p.id, p]));
+  const packs = ix.covers.filter(p => p.ids.some(id => rows.has(id)));
+  const want = packs.reduce((n, p) => n + p.ids.filter(id => rows.has(id)).length, 0);
+  const d = await db();
+  const breathe = () => new Promise(r => setTimeout(r, 0));  // que la pantalla no se congele
+  onProgress("portadas", 0, want);
+  for (const p of packs) {
+    const b = await unseal(k, await getBin(p.f));
+    const len = new DataView(b.buffer, b.byteOffset).getUint32(0);
+    let off = 4 + len, batch = [];
+    const flush = async () => {
+      const tx = d.transaction(["posts", "covers"], "readwrite");
+      for (const [row, buf] of batch) {
+        tx.objectStore("covers").put(buf, row.id);
+        tx.objectStore("posts").put({ ...row, img: true });
+      }
+      await done(tx);
+      covers += batch.length; batch = [];
+      onProgress("portadas", covers, want);
+      await breathe();
+    };
+    for (const [id, size] of JSON.parse(new TextDecoder().decode(b.subarray(4, 4 + len)))) {
+      const row = rows.get(id);
+      if (row) { batch.push([row, b.slice(off, off + size).buffer]); if (batch.length >= 100) await flush(); }
+      off += size;
+    }
+    if (batch.length) await flush();
+  }
+  // fotos de los sitios del mapa: van al mismo almacen de portadas, con id "<code>~<n>"
+  if (ix.fotos?.length) {
+    const tengo = new Set(await req(d.transaction("covers").objectStore("covers").getAllKeys()));
+    for (const p of ix.fotos.filter(p => p.ids.some(id => !tengo.has(id)))) {
+      const b = await unseal(k, await getBin(p.f));
+      const len = new DataView(b.buffer, b.byteOffset).getUint32(0);
+      let off = 4 + len;
+      const tx = d.transaction("covers", "readwrite");
+      for (const [id, size] of JSON.parse(new TextDecoder().decode(b.subarray(4, 4 + len)))) {
+        if (!tengo.has(id)) tx.objectStore("covers").put(b.slice(off, off + size).buffer, id);
+        off += size;
+      }
+      await done(tx);
+      await breathe();
+    }
+  }
+  return posts || covers ? { posts, covers } : null;
+}
+
+// --- buzon cifrado de la app Guardados del Mac (guardados-app/cloud) ---
+// Cada persona tiene el suyo: el Mac sube los mismos paquetes de arriba, cifrados
+// con una llave que solo tienen su Mac y sus moviles. La llave llega una vez por el
+// QR (#conectar=1.<id>.<lectura>.<llave>, en el fragmento: no llega a ningun servidor)
+// y se queda en este dispositivo. El servidor solo ve bytes cifrados.
+// Sin buzon conectado, nada de esto se ejecuta: los paquetes de Nacho (sync/) van igual.
+const BUZON = "guardados.buzon", BUZON_POSTS = "guardados.buzon.posts.v1";
+const B64 = /^[A-Za-z0-9_-]{43}$/;
+const loopback = u => /^http:\/\/(127\.0\.0\.1|localhost)(:\d{2,5})?$/.test(u);
+export function buzon() {
+  try { const b = JSON.parse(ls.get(BUZON) || "null"); return b?.id && b.r && b.k ? b : null; } catch { return null; }
+}
+// acepta el enlace entero del QR o solo el fragmento
+export function setBuzon(s) {
+  const m = String(s || "").match(/#?conectar=1\.([A-Za-z0-9_-]{43})\.([A-Za-z0-9_-]{43})\.([A-Za-z0-9_-]{43})(?:&u=([^&#\s]+))?/);
+  if (!m || !B64.test(m[1]) || !B64.test(m[2]) || !B64.test(m[3])) return false;
+  let u = null;
+  if (m[4]) {  // solo en pruebas: un buzon en el propio ordenador (wrangler dev)
+    try { u = decodeURIComponent(m[4]).replace(/\/$/, ""); } catch { return false; }
+    if (!loopback(u)) return false;
+  }
+  const prev = buzon();
+  ls.set(BUZON, JSON.stringify({ id: m[1], r: m[2], k: m[3], u }));
+  if (prev?.id !== m[1]) ls.set(BUZON_POSTS, null);
+  return true;
+}
+export function forgetBuzon() { ls.set(BUZON, null); ls.set(BUZON_POSTS, null); }
+
+// -> null si no hay nada nuevo; { posts, covers } con lo que ha entrado; { gone: true } si el
+// buzon ya no existe (el Mac cambio la llave: este movil queda desconectado)
+export async function buzonNow(rules, onProgress = () => {}) {
+  const b = buzon();
+  if (!b) return null;
+  const { BUZON_URL } = await import("./buzon-config.js");
+  const base = b.u || BUZON_URL;
+  const get = async f => {
+    const r = await fetch(`${base}/v1/${b.id}/${f}`, { cache: "no-store", credentials: "omit", referrerPolicy: "no-referrer",
+      headers: { Authorization: "Bearer " + b.r } });
+    // "sin buzón": el Mac lo borró al cambiar la llave. "aún no está": el Mac aún lo está subiendo
+    if (r.status === 404 && (await r.text()).startsWith("sin")) { const e = new Error("gone"); e.gone = true; throw e; }
+    if (!r.ok) { const e = new Error("buzon " + r.status); e.pending = r.status === 404; throw e; }
+    return new Uint8Array(await r.arrayBuffer());
+  };
+  let ix;
+  try { ix = JSON.parse(new TextDecoder().decode(await unseal(b.k, await get("index.bin")))); }
+  catch (e) {
+    if (e.gone) { forgetBuzon(); return { gone: true }; }
+    if (e.pending) return { pending: true };
+    throw e;
+  }
+  return pull(b.k, ix, get, BUZON_POSTS, rules, onProgress);
+}
+
+// --- preguntame (Gemini desde el movil) ---
+const ASK_KEY = "guardados.gk", ASK_N = "guardados.ask.n", ASK_MAX = 40;
+export const askKey = () => ls.get(ASK_KEY);
+export async function ask(question, posts) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [day, n] = (ls.get(ASK_N) || "").split("|");
+  const used = day === today ? +n : 0;
+  if (used >= ASK_MAX) throw new Error("tope");
+  ls.set(ASK_N, `${today}|${used + 1}`);
+  const prompt = `Eres el buscador personal de Nacho. Estos son guardados suyos de Instagram y TikTok (JSON, uno por linea):
+${posts.map(p => JSON.stringify(p)).join("\n")}
+
+Pregunta de Nacho: ${question}
+
+Responde en espanol, directo y breve (maximo 120 palabras), como un amigo que conoce sus guardados.
+Usa SOLO estos guardados. Cita cada uno que menciones con su id entre corchetes, p. ej. [AbCd1234xyz].
+Si pide ideas o proyectos, prioriza los de categoria Ideas y los que no estan hechos (st vacio).
+Si nada encaja, dilo y sugiere como buscarlo.`;
+  // Flash-Lite primero; si su cupo diario se acaba (429), el otro modelo tiene el suyo
+  // clave A (gratis) primero; si su cupo se acaba (429), la B (de pago, prepago de 5 EUR/mes)
+  return (await gemini(prompt, { temperature: 0.4, maxOutputTokens: 600 })) || "No he sabido responder.";
+}
+
+async function gemini(prompt, config) {
+  let r;
+  for (const k of [askKey(), ls.get(ASK_KEY + "2")]) {
+    if (!k) continue;
+    r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${encodeURIComponent(k)}`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: config }),
+    });
+    if (r.status !== 429 && r.status !== 503) break;
+  }
+  if (!r) throw new Error("sin clave");
+  if (!r.ok) throw new Error("gemini " + r.status);
+  const d = await r.json();
+  return ((d.candidates?.[0]?.content?.parts) || []).map(p => p.text || "").join("").trim();
+}
+
+// --- sitios del mapa, tocados desde el movil (borrar / anadir / volver a investigar) ---
+// El Mac los saca con Apple Maps (sitios.py); aqui, sin Mac, con el buscador de
+// OpenStreetMap (Nominatim: gratis, 1 busqueda por segundo). lugMio = no lo pisa el Mac.
+export async function setLugares(id, lug) {
+  const d = await db();
+  const tx = d.transaction("posts", "readwrite");
+  const row = await req(tx.objectStore("posts").get(id));
+  if (row) tx.objectStore("posts").put({ ...row, lug, lugMio: true });
+  await done(tx);
+}
+let ultimaBusqueda = 0;
+export async function buscarSitio(q, tipo = "planes") {
+  const espera = 1100 - (Date.now() - ultimaBusqueda);
+  if (espera > 0) await new Promise(r => setTimeout(r, espera));
+  ultimaBusqueda = Date.now();
+  const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&addressdetails=1&accept-language=es&q=${encodeURIComponent(q)}`);
+  const [h] = r.ok ? await r.json() : [];
+  if (!h) return null;
+  const a = h.address || {};
+  return { n: h.name || q.split(",")[0], t: tipo, ci: a.city || a.town || a.village || "",
+    lat: +(+h.lat).toFixed(6), lng: +(+h.lon).toFixed(6),
+    a: [a.road, a.house_number].filter(Boolean).join(" ") };
+}
+export async function investigarSitios(p) {
+  const txt = await gemini(`Saca TODOS los lugares concretos que se pueden visitar de este video (restaurantes, bares,
+cafeterias, hoteles, museos, tiendas, playas...). El nombre puede ir tras 📍 o como @cuenta del local.
+No inventes; un sitio sin nombre no vale. Devuelve SOLO JSON: {"lugares":[{"nombre":"","ciudad":"","pais":"",
+"tipo":"restaurantes|bares|cafes|hoteles|museos|planes|naturaleza|tiendas"}]}
+Titulo: ${p.t}\nDescripcion: ${(p.c || "").slice(0, 1500)}\nTranscripcion: ${(p.tr || "").slice(0, 2500)}`,
+    { temperature: 0.1, maxOutputTokens: 1500, responseMimeType: "application/json" });
+  const ls = JSON.parse(txt || "{}").lugares || [];
+  const out = [];
+  for (const l of ls) {
+    const h = await buscarSitio([l.nombre, l.ciudad, l.pais].filter(Boolean).join(", "), l.tipo);
+    if (h) out.push({ ...h, n: l.nombre });
+  }
+  return out;
+}
